@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Aperçu du tracé (outil de développement)</title>
+<style>body{margin:0;background:#111;color:#eee;font:14px monospace}#stats{position:absolute;left:10px;top:10px;white-space:pre}</style>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js", "cannon-es": "../vendor/cannon-es.js", "three/addons/": "../vendor/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c" width="1100" height="900"></canvas>
+<div id="stats"></div>
+<script type="module">
+import { TrackLayout } from '../js/track/trackLayout.js';
+import { CONFIG } from '../js/config.js';
+
+const L = new TrackLayout();
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+const b = L.bounds, pad = 60;
+const sc = Math.min((cv.width - 2 * pad) / (b.max.x - b.min.x + 40), (cv.height - 2 * pad) / (b.max.z - b.min.z + 40));
+const X = (x) => pad + (x - b.min.x + 20) * sc, Y = (z) => pad + (z - b.min.z + 20) * sc;
+const n = L.count, hw = L.halfWidth, bd = L.barrierDistance;
+
+function strokeOffset(off, color, w) {
+  g.strokeStyle = color; g.lineWidth = w; g.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const p = L.points[i % n], r = L.rights[i % n];
+    const x = X(p.x + r.x * off), y = Y(p.z + r.z * off);
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+strokeOffset(0, '#555', hw * 2 * sc);
+strokeOffset(bd, '#aaa', 1); strokeOffset(-bd, '#aaa', 1);
+// ligne idéale colorée par vitesse
+for (let i = 0; i < n; i++) {
+  const a = L.racingPoints[i], c = L.racingPoints[(i + 1) % n];
+  const v = L.speedProfile[i] / CONFIG.ai.maxSpeed;
+  g.strokeStyle = `hsl(${v * 120},90%,50%)`; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(X(a.x), Y(a.z)); g.lineTo(X(c.x), Y(c.z)); g.stroke();
+}
+// départ + sens
+const p0 = L.points[0], r0 = L.rights[0], t0 = L.tangents[0];
+g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath();
+g.moveTo(X(p0.x - r0.x * hw), Y(p0.z - r0.z * hw)); g.lineTo(X(p0.x + r0.x * hw), Y(p0.z + r0.z * hw)); g.stroke();
+g.fillStyle = '#0ff'; g.beginPath(); g.arc(X(p0.x + t0.x * 30), Y(p0.z + t0.z * 30), 6, 0, 7); g.fill();
+// checkpoints
+for (let k = 0; k < CONFIG.track.numCheckpoints; k++) {
+  const p = L.points[Math.floor(k * n / CONFIG.track.numCheckpoints)];
+  g.fillStyle = '#f0f'; g.fillRect(X(p.x) - 3, Y(p.z) - 3, 6, 6);
+}
+
+// Statistiques : rayon minimal, dégagement minimal entre portions non adjacentes
+let maxK = 0, maxKi = 0;
+for (let i = 0; i < n; i++) if (Math.abs(L.curvature[i]) > maxK) { maxK = Math.abs(L.curvature[i]); maxKi = i; }
+let minClear = Infinity, ci = 0, cj = 0;
+const sep = Math.ceil(80 / L.ds);
+for (let i = 0; i < n; i += 1) for (let j = i + sep; j < n; j++) {
+  if (n - (j - i) < sep) continue;
+  const d = L.points[i].distanceTo(L.points[j]);
+  if (d < minClear) { minClear = d; ci = i; cj = j; }
+}
+g.strokeStyle = '#f00'; g.lineWidth = 2; g.beginPath();
+g.moveTo(X(L.points[ci].x), Y(L.points[ci].z)); g.lineTo(X(L.points[cj].x), Y(L.points[cj].z)); g.stroke();
+const pk = L.points[maxKi]; g.strokeStyle = '#ff0'; g.beginPath(); g.arc(X(pk.x), Y(pk.z), 10, 0, 7); g.stroke();
+let lapEst = 0; for (let i = 0; i < n; i++) lapEst += L.ds / L.speedProfile[i];
+const txt = `longueur: ${L.length.toFixed(0)} m, échantillons: ${n}
+rayon min: ${(1 / maxK).toFixed(1)} m (idx ${maxKi})  [doit être > ${bd.toFixed(1)}]
+dégagement min: ${minClear.toFixed(1)} m (idx ${ci}/${cj})  [doit être > ${(2 * bd + 6).toFixed(1)}]
+tour IA théorique: ${lapEst.toFixed(1)} s, vitesse min profil: ${(Math.min(...L.speedProfile) * 3.6).toFixed(0)} km/h`;
+document.getElementById('stats').textContent = txt;
+document.title = 'OK';
+</script>
+</body>
+</html>
