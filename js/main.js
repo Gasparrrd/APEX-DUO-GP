@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=35';
-import { InputManager } from './core/input.js?v=35';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=35';
-import { GarageScene } from './scenes/garageScene.js?v=35';
-import { RaceScene } from './scenes/raceScene.js?v=35';
-import { HUDController } from './ui/hud.js?v=35';
-import { soundManager } from './core/audio.js?v=35';
-import { NetworkManager } from './net/networkManager.js?v=35';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=36';
+import { InputManager } from './core/input.js?v=36';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=36';
+import { GarageScene } from './scenes/garageScene.js?v=36';
+import { RaceScene } from './scenes/raceScene.js?v=36';
+import { HUDController } from './ui/hud.js?v=36';
+import { soundManager } from './core/audio.js?v=36';
+import { NetworkManager } from './net/networkManager.js?v=36';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -1995,11 +1995,6 @@ window.addEventListener('DOMContentLoaded', () => {
   if (roomParam) {
     const cleanCode = NetworkManager.normalizeRoomCode(roomParam);
     app._pendingRoomId = cleanCode;
-
-    // Nettoie l'URL immédiatement pour éviter qu'un rechargement ultérieur ne bloque en mode Invité
-    try {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } catch (_) {}
 
     const joinCodeInput = document.getElementById('online-join-code-input');
     if (joinCodeInput) {

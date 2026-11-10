@@ -252,14 +252,18 @@ export class NetworkManager {
 
   _syncLegacyFlags() {
     const occupied = this.getOccupiedSlots();
-    this.connected = this.role === 'guest' ? Boolean(this.connected || occupied.length >= 2) : occupied.length >= 1;
-    if (this.role === 'guest') {
+    if (this.role === 'host') {
+      this.connected = occupied.length >= 1;
+      this.guestReady = this.canStartOnlineRace();
+    } else if (this.role === 'guest') {
+      // Côté Guest, `this.connected` reflète uniquement une connexion réelle établie avec l'Hôte
       const mySlot = this.slots[this.mySlotIndex];
       if (mySlot && mySlot.occupied) {
         this.guestReady = Boolean(mySlot.ready);
       }
     } else {
-      this.guestReady = this.canStartOnlineRace();
+      this.connected = false;
+      this.guestReady = false;
     }
     const firstGuest = this.slots.find((s) => !s.isHost && s.occupied);
     if (firstGuest) {
@@ -456,16 +460,25 @@ export class NetworkManager {
 
     let retryAttempt = 0;
     const maxRetries = 15;
+    let lastAttemptAt = 0;
 
-    const attemptPeerConnect = () => {
+    const attemptPeerConnect = (force = false) => {
       if (!this.active || this.role !== 'guest' || !this.peer || !this.peerOpen) return;
       if (this.connected) return;
+      if (this.reliableConn && this.reliableConn.open) return;
+
+      const now = Date.now();
+      if (!force && this.reliableConn && (now - lastAttemptAt < 2500)) {
+        // Laisse le temps à la négociation WebRTC en cours d'aboutir
+        return;
+      }
+      lastAttemptAt = now;
 
       retryAttempt++;
       const retryLabel = retryAttempt > 1 ? `Recherche du salon… (${retryAttempt}/${maxRetries})` : 'Connexion au salon…';
       this.onPeerReady(cleanRoomId, inviteUrl, retryLabel);
 
-      // Ferme une éventuelle tentative de connexion non aboutie pour éviter les conflits d'offres WebRTC
+      // Ferme une éventuelle tentative de connexion expirée pour éviter les conflits d'offres WebRTC
       if (this.reliableConn && !this.reliableConn.open) {
         try { this.reliableConn.close(); } catch (_) {}
         this.reliableConn = null;
@@ -499,7 +512,7 @@ export class NetworkManager {
           return;
         }
         sendHelloHandshake();
-        attemptPeerConnect();
+        attemptPeerConnect(false);
       } else {
         clearInterval(this._guestConnectRetryTimer);
         this._guestConnectRetryTimer = null;
@@ -516,13 +529,14 @@ export class NetworkManager {
           this._peerBrokerId = myGuestPeerId || null;
           console.log('[P2P Guest] Connecté au broker PeerJS:', myGuestPeerId, '-> Connexion au salon:', cleanRoomId, `(${targetBrokerId})`);
           this.onPeerReady(cleanRoomId, inviteUrl, 'Connexion au salon…');
-          attemptPeerConnect();
+          attemptPeerConnect(true);
         });
 
         this.peer.on('error', (err) => {
           const errType = err?.type || '';
           console.warn('[PeerJS Guest Error]', errType || err);
           if (errType === 'peer-unavailable') {
+            lastAttemptAt = 0; // Autorise une relance au prochain cycle
             const retryLabel = `En attente de l'Hôte… (${retryAttempt}/${maxRetries})`;
             this.onPeerReady(cleanRoomId, inviteUrl, retryLabel);
           } else {
@@ -557,8 +571,8 @@ export class NetworkManager {
   }
 
   /**
-   * Démarre le relais HTTP local `/api/p2p` (quand servi par `server.py`) pour garantir
-   * la connexion même entre deux navigateurs différents ou derrière un pare-feu bloquant WebRTC.
+   * Démarre le relais HTTP local `/api/p2p` (uniquement s'il est supporté par le serveur, ex: `server.py`).
+   * S'arrête automatiquement sur hébergement statique (GitHub Pages, etc.) dès qu'une réponse 404/405 est reçue.
    */
   _startLocalHttpRelay(roomId) {
     if (this._httpRelayTimer) {
@@ -566,13 +580,30 @@ export class NetworkManager {
       this._httpRelayTimer = null;
     }
     this._httpLastSeq = 0;
-    if (typeof fetch !== 'function' || !roomId) return;
+    if (this._httpRelayUnsupported || typeof fetch !== 'function' || !roomId) return;
+
+    // Évite les appels inutiles sur hébergement statique connu
+    const host = typeof window !== 'undefined' ? (window.location?.hostname || '') : '';
+    if (host.endsWith('github.io') || host.endsWith('netlify.app') || host.endsWith('vercel.app')) {
+      this._httpRelayUnsupported = true;
+      return;
+    }
 
     const pollHttp = () => {
-      if (!this.active || !this.roomId) return;
+      if (!this.active || !this.roomId || this._httpRelayUnsupported) return;
       const url = `/api/p2p?room=${encodeURIComponent(this.roomId)}&clientId=${encodeURIComponent(this._localClientId)}&since=${this._httpLastSeq}`;
       fetch(url, { method: 'GET', cache: 'no-store' })
-        .then((res) => (res.ok ? res.json() : null))
+        .then((res) => {
+          if (res.status === 404 || res.status === 405) {
+            this._httpRelayUnsupported = true;
+            if (this._httpRelayTimer) {
+              clearInterval(this._httpRelayTimer);
+              this._httpRelayTimer = null;
+            }
+            return null;
+          }
+          return res.ok ? res.json() : null;
+        })
         .then((data) => {
           if (!data || !this.active) return;
           if (typeof data.seq === 'number' && data.seq > this._httpLastSeq) {
@@ -601,7 +632,7 @@ export class NetworkManager {
   }
 
   _postHttpRelay(payloadObj) {
-    if (typeof fetch !== 'function' || !this.active || !this.roomId) return;
+    if (this._httpRelayUnsupported || typeof fetch !== 'function' || !this.active || !this.roomId) return;
     fetch('/api/p2p', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -610,6 +641,10 @@ export class NetworkManager {
         clientId: this._localClientId,
         ...payloadObj,
       }),
+    }).then((res) => {
+      if (res && (res.status === 404 || res.status === 405)) {
+        this._httpRelayUnsupported = true;
+      }
     }).catch(() => {});
   }
 
@@ -747,7 +782,7 @@ export class NetworkManager {
   /**
    * Côté Invité : gère les événements des canaux `control` et `fast` connectés à l'Hôte.
    */
-  _bindGuestConnectionEvents(conn, chType, cleanRoomId = null) {
+  _bindGuestConnectionEvents(conn, chType, cleanBrokerId = null) {
     if (!conn) return;
     if (chType === 'fast') {
       this.fastConn = conn;
@@ -755,7 +790,10 @@ export class NetworkManager {
       this.reliableConn = conn;
     }
 
+    let wasEverOpen = false;
+
     conn.on('open', () => {
+      wasEverOpen = true;
       this.connected = true;
       if (this.role === 'guest' && chType === 'control') {
         this._sendControlMessage({
@@ -766,17 +804,17 @@ export class NetworkManager {
           ready: Boolean(this.slots[this.mySlotIndex]?.ready),
         });
         // Ouvre le canal rapide non-bloquant une fois le canal fiable établi (évite les collisions ICE/SDP)
-        const targetRoom = cleanRoomId || this.roomId;
-        if (targetRoom && this.peer && (!this.fastConn || !this.fastConn.open)) {
+        const targetBroker = cleanBrokerId || toBrokerPeerId(this.roomId);
+        if (targetBroker && this.peer && (!this.fastConn || !this.fastConn.open)) {
           setTimeout(() => {
             if (!this.active || this.role !== 'guest' || !this.peer) return;
             try {
-              const fastConn = this.peer.connect(targetRoom, {
+              const fastConn = this.peer.connect(targetBroker, {
                 reliable: false,
                 serialization: 'binary',
                 metadata: { channel: 'fast', clientId: this._localClientId },
               });
-              this._bindGuestConnectionEvents(fastConn, 'fast', targetRoom);
+              this._bindGuestConnectionEvents(fastConn, 'fast', targetBroker);
             } catch (_) {}
           }, 180);
         }
@@ -794,13 +832,16 @@ export class NetworkManager {
     });
 
     conn.on('close', () => {
-      if (chType === 'control') {
-        const wasRole = this.role;
-        const wasIntentional = this._intentionalLeave;
-        this.connected = false;
-        if (wasRole === 'guest' && !wasIntentional) {
-          this.disconnect();
-          this.onHostLeft('L\'hôte s\'est déconnecté');
+      if (chType === 'control' && this.reliableConn === conn) {
+        this.reliableConn = null;
+        if (wasEverOpen) {
+          const wasRole = this.role;
+          const wasIntentional = this._intentionalLeave;
+          this.connected = false;
+          if (wasRole === 'guest' && !wasIntentional) {
+            this.disconnect();
+            this.onHostLeft('L\'hôte s\'est déconnecté');
+          }
         }
       }
     });
