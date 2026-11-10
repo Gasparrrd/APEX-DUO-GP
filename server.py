@@ -180,5 +180,5 @@ class RacingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.ThreadingTCPServer(("127.0.0.1", PORT), RacingHTTPRequestHandler) as httpd:
+    with socketserver.ThreadingTCPServer(("0.0.0.0", PORT), RacingHTTPRequestHandler) as httpd:
         httpd.serve_forever()

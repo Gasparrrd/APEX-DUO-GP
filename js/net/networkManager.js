@@ -21,6 +21,23 @@ const NET_TICK_RATE = 30;
 const NET_TICK_INTERVAL = 1 / NET_TICK_RATE;
 const MAX_ONLINE_PLAYERS = 4;
 
+const PEER_APP_NAMESPACE = 'APEXDUO_';
+
+/** Convertit un code court (ex: RACE-4821) en ID unique sur le broker public PeerJS */
+export function toBrokerPeerId(roomCode) {
+  const norm = NetworkManager.normalizeRoomCode(roomCode);
+  return norm ? `${PEER_APP_NAMESPACE}${norm}` : '';
+}
+
+/** Récupère le code de salon utilisateur depuis l'ID de broker */
+export function fromBrokerPeerId(brokerId) {
+  if (!brokerId) return '';
+  if (brokerId.startsWith(PEER_APP_NAMESPACE)) {
+    return brokerId.slice(PEER_APP_NAMESPACE.length);
+  }
+  return brokerId;
+}
+
 const DEFAULT_SLOT_CARS = [
   { name: 'HÔTE',     bodyType: 'supercar', color: '#1e88e5', rims: 'sport', rimFinish: 'silver', spoiler: 'gt'  },
   { name: 'PILOTE 2', bodyType: 'muscle',   color: '#fb8c00', rims: 'star',  rimFinish: 'black',  spoiler: 'lip' },
@@ -35,7 +52,21 @@ const ICE_SERVERS = [
   { urls: 'stun:stun3.l.google.com:19302' },
   { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
 ];
+
+const PEERJS_CLIENT_OPTIONS = {
+  debug: 1,
+  host: '0.peerjs.com',
+  port: 443,
+  path: '/',
+  secure: true,
+  pingInterval: 4500, // Garde le WebSocket actif face aux pare-feux et NAT
+  config: {
+    iceServers: ICE_SERVERS,
+    iceCandidatePoolSize: 10,
+  },
+};
 
 export class NetworkManager {
   constructor(callbacks = {}) {
@@ -145,10 +176,10 @@ export class NetworkManager {
 
   /**
    * Normalise un code de salon ou une URL d'invitation saisie par l'utilisateur.
-   * Exemples acceptés :
-   *  - `https://monlien.github.io/?room=RACE-4821` -> `RACE-4821`
-   *  - `race-4821` -> `RACE-4821`
+   * Accepte n'importe quelle variante courante :
    *  - `4821` -> `RACE-4821`
+   *  - `race 4821` / `race-4821` / `RACE-4821` / `#4821` -> `RACE-4821`
+   *  - `https://site.fr/?room=RACE-4821` -> `RACE-4821`
    */
   static normalizeRoomCode(rawInput) {
     let clean = String(rawInput || '').trim();
@@ -160,16 +191,31 @@ export class NetworkManager {
       clean = decodeURIComponent(clean).trim();
     } catch (_) {}
 
-    if (/^\d{4}$/.test(clean)) {
+    // Supprime tout préfixe interne éventuel
+    if (clean.startsWith('APEXDUO_')) {
+      clean = clean.slice('APEXDUO_'.length);
+    }
+
+    // Supprime les #, espaces et ponctuations de tête
+    clean = clean.replace(/^[#\s]+/, '').trim();
+
+    // Si seulement 3 à 6 chiffres (ex: 4821) -> RACE-4821
+    if (/^\d{3,6}$/.test(clean)) {
       return `RACE-${clean}`;
     }
-    if (/^race-[a-z0-9]{3,8}$/i.test(clean)) {
-      return clean.toUpperCase();
+
+    // Si préfixe "race" avec espace ou tiret (ex: "race 4821" ou "race-4821")
+    const m = clean.match(/^race[\s_-]*([a-z0-9]{3,8})$/i);
+    if (m) {
+      return `RACE-${m[1].toUpperCase()}`;
     }
+
+    // Si 4 caractères alphanumériques
     if (/^[a-z0-9]{4}$/i.test(clean)) {
       return `RACE-${clean.toUpperCase()}`;
     }
-    return clean;
+
+    return clean.toUpperCase();
   }
 
   /**
@@ -271,16 +317,19 @@ export class NetworkManager {
       carConfig: { ...this._lastHostCarConfig, name: this.hostName },
     };
 
-    const desiredPeerId = forcedCode || NetworkManager.generateShortRoomCode();
-    const initialInviteUrl = this._setRoomId(desiredPeerId);
-    this.slots[0].peerId = desiredPeerId;
-    this._setupLocalBroadcast(desiredPeerId);
-    this._startLocalHttpRelay(desiredPeerId);
+    const desiredShortCode = forcedCode || NetworkManager.generateShortRoomCode();
+    const cleanRoomCode = NetworkManager.normalizeRoomCode(desiredShortCode);
+    const brokerPeerId = toBrokerPeerId(cleanRoomCode);
 
-    // Rend le code de salon et le canal local immédiatement opérationnels sans attendre le broker externe
-    this.onPeerReady(desiredPeerId, initialInviteUrl, 'Salon prêt');
+    const initialInviteUrl = this._setRoomId(cleanRoomCode);
+    this.slots[0].peerId = cleanRoomCode;
+    this._setupLocalBroadcast(cleanRoomCode);
+    this._startLocalHttpRelay(cleanRoomCode);
 
-    const finalizeHostOpen = (resolvedId, badgeText = 'Salon prêt') => {
+    // Initialement, affiche "Connexion au serveur…" jusqu'à confirmation du broker
+    this.onPeerReady(cleanRoomCode, initialInviteUrl, 'Connexion au serveur…');
+
+    const finalizeHostOpen = (resolvedId, badgeText = 'Salon prêt ✅') => {
       if (!this.active || this.role !== 'host') return;
       if (this._openFallbackTimer) {
         clearTimeout(this._openFallbackTimer);
@@ -293,7 +342,7 @@ export class NetworkManager {
       this._setupLocalBroadcast(resolvedId);
       this._startLocalHttpRelay(resolvedId);
       if (!wasOpen || this.roomId === resolvedId) {
-        console.log('[P2P Host] Salon prêt — Code:', resolvedId, '| Lien:', inviteUrl);
+        console.log('[P2P Host] Salon prêt — Code:', resolvedId, '| Broker ID:', toBrokerPeerId(resolvedId), '| Lien:', inviteUrl);
         this.onPeerReady(resolvedId, inviteUrl, badgeText);
       }
       this._emitState();
@@ -301,22 +350,20 @@ export class NetworkManager {
 
     this._openFallbackTimer = setTimeout(() => {
       if (!this.peerOpen && this.active && this.role === 'host') {
-        console.warn('[P2P Host] Délai broker PeerJS dépassé — activation du salon:', desiredPeerId);
-        finalizeHostOpen(desiredPeerId, 'Salon prêt');
+        console.warn('[P2P Host] Délai broker PeerJS dépassé — activation locale du salon:', cleanRoomCode);
+        finalizeHostOpen(cleanRoomCode, 'Salon prêt');
       }
-    }, 5000);
+    }, 6000);
 
     const PeerCtor = typeof window !== 'undefined' ? (window.Peer || window.peerjs?.Peer) : null;
     if (typeof PeerCtor === 'function') {
       try {
-        this.peer = new PeerCtor(desiredPeerId, {
-          debug: 1,
-          config: { iceServers: ICE_SERVERS },
-        });
+        this.peer = new PeerCtor(brokerPeerId, PEERJS_CLIENT_OPTIONS);
 
         this.peer.on('open', (id) => {
           this._hostRetryCount = 0;
-          finalizeHostOpen(id || desiredPeerId, 'Salon prêt');
+          const assignedCode = fromBrokerPeerId(id) || cleanRoomCode;
+          finalizeHostOpen(assignedCode, 'Salon prêt ✅');
         });
 
         this.peer.on('connection', (conn) => {
@@ -326,7 +373,7 @@ export class NetworkManager {
         this.peer.on('error', (err) => {
           const errType = err?.type || '';
           console.warn('[PeerJS Host Error]', errType || err);
-          if (errType === 'unavailable-id' && this._hostRetryCount < 4) {
+          if (errType === 'unavailable-id' && this._hostRetryCount < 5) {
             this._hostRetryCount++;
             const nextCode = NetworkManager.generateShortRoomCode();
             console.log('[PeerJS Host] Code déjà utilisé, nouvel essai avec :', nextCode);
@@ -335,18 +382,18 @@ export class NetworkManager {
           }
           this.onPeerError(err);
           if (!this.peerOpen) {
-            finalizeHostOpen(desiredPeerId, 'Salon prêt');
+            finalizeHostOpen(cleanRoomCode, 'Salon prêt');
           }
           this._emitState();
         });
       } catch (err) {
         console.error('[PeerJS Host Init Exception]', err);
         this.onPeerError(err);
-        finalizeHostOpen(desiredPeerId, 'Salon prêt');
+        finalizeHostOpen(cleanRoomCode, 'Salon prêt');
       }
     } else {
       console.warn('[PeerJS] Bibliothèque PeerJS non chargée — bascule sur le canal P2P local.');
-      finalizeHostOpen(desiredPeerId, 'Salon prêt');
+      finalizeHostOpen(cleanRoomCode, 'Salon prêt');
     }
 
     this._emitState();
@@ -359,6 +406,8 @@ export class NetworkManager {
   initGuest(hostPeerId, guestName, guestCarConfig) {
     const cleanRoomId = NetworkManager.normalizeRoomCode(hostPeerId);
     if (!cleanRoomId) return;
+
+    const targetBrokerId = toBrokerPeerId(cleanRoomId);
 
     this.disconnect();
     this._intentionalLeave = false;
@@ -405,21 +454,36 @@ export class NetworkManager {
     // Envoi immédiat sur BroadcastChannel & Relais HTTP
     sendHelloHandshake();
 
+    let retryAttempt = 0;
+    const maxRetries = 15;
+
     const attemptPeerConnect = () => {
       if (!this.active || this.role !== 'guest' || !this.peer || !this.peerOpen) return;
-      if (this.reliableConn && this.reliableConn.open) return;
+      if (this.connected) return;
+
+      retryAttempt++;
+      const retryLabel = retryAttempt > 1 ? `Recherche du salon… (${retryAttempt}/${maxRetries})` : 'Connexion au salon…';
+      this.onPeerReady(cleanRoomId, inviteUrl, retryLabel);
+
+      // Ferme une éventuelle tentative de connexion non aboutie pour éviter les conflits d'offres WebRTC
+      if (this.reliableConn && !this.reliableConn.open) {
+        try { this.reliableConn.close(); } catch (_) {}
+        this.reliableConn = null;
+      }
+
       try {
-        const relConn = this.peer.connect(cleanRoomId, {
+        console.log(`[P2P Guest] Tentative de connexion vers l'Hôte (${targetBrokerId}) — essai ${retryAttempt}/${maxRetries}`);
+        const relConn = this.peer.connect(targetBrokerId, {
           reliable: true,
           metadata: { channel: 'control', guestName: this.guestName, clientId: this._localClientId },
         });
-        this._bindGuestConnectionEvents(relConn, 'control', cleanRoomId);
+        this._bindGuestConnectionEvents(relConn, 'control', targetBrokerId);
       } catch (err) {
-        console.warn('[PeerJS Guest Connect Attempt Error]', err);
+        console.warn('[PeerJS Guest Connect Exception]', err);
       }
     };
 
-    // Boucle de relance automatique tant que l'invité n'a pas reçu HOST_WELCOME
+    // Boucle de relance automatique tant que l'invité n'est pas connecté
     this._guestConnectRetryTimer = setInterval(() => {
       if (!this.active || this.role !== 'guest') {
         clearInterval(this._guestConnectRetryTimer);
@@ -427,30 +491,43 @@ export class NetworkManager {
         return;
       }
       if (!this.connected) {
+        if (retryAttempt >= maxRetries) {
+          clearInterval(this._guestConnectRetryTimer);
+          this._guestConnectRetryTimer = null;
+          this.onPeerReady(cleanRoomId, inviteUrl, 'Salon introuvable ❌');
+          this.onHostLeft(`Salon ${cleanRoomId} introuvable. Vérifiez que l'Hôte est bien sur "Multijoueur en Ligne" et que le code est exact.`);
+          return;
+        }
         sendHelloHandshake();
         attemptPeerConnect();
+      } else {
+        clearInterval(this._guestConnectRetryTimer);
+        this._guestConnectRetryTimer = null;
       }
     }, 1500);
 
     const PeerCtor = typeof window !== 'undefined' ? (window.Peer || window.peerjs?.Peer) : null;
     if (typeof PeerCtor === 'function') {
       try {
-        this.peer = new PeerCtor(undefined, {
-          debug: 1,
-          config: { iceServers: ICE_SERVERS },
-        });
+        this.peer = new PeerCtor(undefined, PEERJS_CLIENT_OPTIONS);
 
         this.peer.on('open', (myGuestPeerId) => {
           this.peerOpen = true;
           this._peerBrokerId = myGuestPeerId || null;
-          console.log('[P2P Guest] Connecté au broker PeerJS:', myGuestPeerId, '-> Connexion au salon:', cleanRoomId);
+          console.log('[P2P Guest] Connecté au broker PeerJS:', myGuestPeerId, '-> Connexion au salon:', cleanRoomId, `(${targetBrokerId})`);
           this.onPeerReady(cleanRoomId, inviteUrl, 'Connexion au salon…');
           attemptPeerConnect();
         });
 
         this.peer.on('error', (err) => {
-          console.warn('[PeerJS Guest Error]', err?.type || err);
-          this.onPeerError(err);
+          const errType = err?.type || '';
+          console.warn('[PeerJS Guest Error]', errType || err);
+          if (errType === 'peer-unavailable') {
+            const retryLabel = `En attente de l'Hôte… (${retryAttempt}/${maxRetries})`;
+            this.onPeerReady(cleanRoomId, inviteUrl, retryLabel);
+          } else {
+            this.onPeerError(err);
+          }
           this._emitState();
         });
       } catch (err) {

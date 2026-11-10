@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=34';
-import { InputManager } from './core/input.js?v=34';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=34';
-import { GarageScene } from './scenes/garageScene.js?v=34';
-import { RaceScene } from './scenes/raceScene.js?v=34';
-import { HUDController } from './ui/hud.js?v=34';
-import { soundManager } from './core/audio.js?v=34';
-import { NetworkManager } from './net/networkManager.js?v=34';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=35';
+import { InputManager } from './core/input.js?v=35';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=35';
+import { GarageScene } from './scenes/garageScene.js?v=35';
+import { RaceScene } from './scenes/raceScene.js?v=35';
+import { HUDController } from './ui/hud.js?v=35';
+import { soundManager } from './core/audio.js?v=35';
+import { NetworkManager } from './net/networkManager.js?v=35';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
