@@ -49,10 +49,18 @@ const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' },
+  // Relais TURN (UDP, TCP et TLS sur port 443) pour traverser les NAT symétriques, 4G/5G et pare-feux entre réseaux différents
+  {
+    urls: [
+      'turn:turn.evan-brass.net',
+      'turn:turn.evan-brass.net?transport=tcp',
+      'turns:turn.evan-brass.net:443?transport=tcp',
+    ],
+    username: 'user',
+    credential: 'password',
+  },
 ];
 
 const PEERJS_CLIENT_OPTIONS = {
@@ -64,7 +72,7 @@ const PEERJS_CLIENT_OPTIONS = {
   pingInterval: 4500, // Garde le WebSocket actif face aux pare-feux et NAT
   config: {
     iceServers: ICE_SERVERS,
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 4,
   },
 };
 
@@ -459,7 +467,7 @@ export class NetworkManager {
     sendHelloHandshake();
 
     let retryAttempt = 0;
-    const maxRetries = 15;
+    const maxRetries = 12;
     let lastAttemptAt = 0;
 
     const attemptPeerConnect = (force = false) => {
@@ -468,8 +476,8 @@ export class NetworkManager {
       if (this.reliableConn && this.reliableConn.open) return;
 
       const now = Date.now();
-      if (!force && this.reliableConn && (now - lastAttemptAt < 2500)) {
-        // Laisse le temps à la négociation WebRTC en cours d'aboutir
+      if (!force && this.reliableConn && (now - lastAttemptAt < 6000)) {
+        // Laisse suffisamment de temps à la négociation ICE/TURN entre réseaux distants
         return;
       }
       lastAttemptAt = now;
@@ -703,7 +711,7 @@ export class NetworkManager {
     });
 
     conn.on('close', () => {
-      if (chType === 'control') {
+      if (chType === 'control' && entry.controlConn === conn) {
         this._handleGuestPeerDisconnected(peerId);
       }
     });
@@ -816,7 +824,7 @@ export class NetworkManager {
               });
               this._bindGuestConnectionEvents(fastConn, 'fast', targetBroker);
             } catch (_) {}
-          }, 180);
+          }, 450);
         }
       }
       this.onPeerConnected(this.mySlotIndex);
