@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=25';
-import { clamp, wrap } from '../core/utils.js?v=25';
+import { CONFIG } from '../config.js?v=32';
+import { clamp, wrap } from '../core/utils.js?v=32';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [
@@ -154,10 +154,17 @@ export class TrackLayout {
     const pts = curve.getSpacedPoints(n);
     pts.length = n;
 
-    // Lisse le profil d'altitude Y pour garantir un ruban continu sans cassure de pente
+    // Lisse le profil d'altitude Y pour garantir un ruban continu sans cassure de pente ni tremblements
     const rawY = new Float32Array(n);
     for (let i = 0; i < n; i++) rawY[i] = Math.max(0, pts[i].y);
-    const smoothY = this.hasRelief ? smoothLoop(rawY, 5) : rawY;
+    let smoothY = rawY;
+    if (this.hasRelief) {
+      const passes = this.circuitId === 'lake' ? 4 : 3;
+      const radius = this.circuitId === 'lake' ? 8 : 6;
+      for (let p = 0; p < passes; p++) {
+        smoothY = smoothLoop(smoothY, radius);
+      }
+    }
     for (let i = 0; i < n; i++) pts[i].y = Math.max(0, smoothY[i]);
 
     this.points = pts;

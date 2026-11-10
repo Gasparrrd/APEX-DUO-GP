@@ -13,18 +13,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=25';
-import { TrackLayout } from '../track/trackLayout.js?v=25';
-import { TrackBuilder } from '../track/trackBuilder.js?v=25';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=25';
-import { Vehicle } from '../physics/vehicle.js?v=25';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=25';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=25';
-import { ParticleSystem } from '../gfx/particles.js?v=25';
-import { WeatherSystem } from '../gfx/weather.js?v=25';
-import { soundManager } from '../core/audio.js?v=25';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=25';
-import { clamp } from '../core/utils.js?v=25';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=32';
+import { TrackLayout } from '../track/trackLayout.js?v=32';
+import { TrackBuilder } from '../track/trackBuilder.js?v=32';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=32';
+import { Vehicle } from '../physics/vehicle.js?v=32';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=32';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=32';
+import { ParticleSystem } from '../gfx/particles.js?v=32';
+import { WeatherSystem } from '../gfx/weather.js?v=32';
+import { soundManager } from '../core/audio.js?v=32';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=32';
+import { clamp } from '../core/utils.js?v=32';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();

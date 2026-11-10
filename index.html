@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>APEX DUO GP — Course 3D Solo, Écran Scindé & Multijoueur P2P</title>
-  <link rel="stylesheet" href="css/style.css?v=25" />
+  <link rel="stylesheet" href="css/style.css?v=32" />
   <!-- PeerJS (WebRTC DataChannel P2P à très faible latence) -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script type="importmap">
@@ -473,12 +473,53 @@
     <!-- Ligne de séparation centrale nette (masquée automatiquement en Mode Solo) -->
     <div id="split-divider"></div>
 
-    <!-- Bouton Pause et Mini-carte au centre -->
+    <!-- Bouton Pause et Mini-carte au centre avec Télémétrie du Vent à droite -->
     <button type="button" id="btn-hud-pause" class="hud-pause-btn" title="Pause (Échap)">❚❚ PAUSE</button>
 
-    <div class="minimap-box">
-      <canvas id="minimap-canvas" width="170" height="145"></canvas>
-      <div id="hud-env-badge" class="env-badge">Ensoleillé (Sec)</div>
+    <div class="hud-center-cluster">
+      <div class="minimap-box">
+        <canvas id="minimap-canvas" width="170" height="145"></canvas>
+        <div id="hud-env-badge" class="env-badge">Ensoleillé (Sec)</div>
+      </div>
+
+      <!-- Indicateur de Vent Dynamique positionné immédiatement à droite de la carte -->
+      <div class="hud-wind-stack">
+        <div id="p1-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif (mode Tempête)">
+          <div class="wind-arrow-disc">
+            <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="p1-wind-arrow">
+              <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="wind-meta">
+            <span class="wind-title">VENT</span>
+            <span class="wind-status" id="p1-wind-status">DOS</span>
+          </div>
+        </div>
+
+        <div id="p2-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif J2 (mode Tempête)">
+          <div class="wind-arrow-disc">
+            <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="p2-wind-arrow">
+              <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="wind-meta">
+            <span class="wind-title">VENT J2</span>
+            <span class="wind-status" id="p2-wind-status">DOS</span>
+          </div>
+        </div>
+
+        <div id="spec-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif (mode Tempête)">
+          <div class="wind-arrow-disc">
+            <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="spec-wind-arrow">
+              <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="wind-meta">
+            <span class="wind-title">VENT</span>
+            <span class="wind-status" id="spec-wind-status">DOS</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="race-countdown" class="countdown-banner">3</div>
@@ -507,18 +548,6 @@
       <div id="p1-finished" class="finished-banner hidden">ARRIVÉ</div>
 
       <div class="hud-bottom-cluster">
-        <div id="p1-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif (mode Tempête)">
-          <div class="wind-arrow-disc">
-            <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="p1-wind-arrow">
-              <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
-            </svg>
-          </div>
-          <div class="wind-meta">
-            <span class="wind-title">VENT</span>
-            <span class="wind-status" id="p1-wind-status">DOS</span>
-          </div>
-        </div>
-
         <div id="p1-boost-wrap" class="boost-gauge">
           <div class="boost-header">
             <span>NITRO BOOST</span>
@@ -566,18 +595,6 @@
       <div id="p2-finished" class="finished-banner hidden">ARRIVÉ</div>
 
       <div class="hud-bottom-cluster">
-        <div id="p2-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif (mode Tempête)">
-          <div class="wind-arrow-disc">
-            <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="p2-wind-arrow">
-              <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
-            </svg>
-          </div>
-          <div class="wind-meta">
-            <span class="wind-title">VENT</span>
-            <span class="wind-status" id="p2-wind-status">DOS</span>
-          </div>
-        </div>
-
         <div id="p2-boost-wrap" class="boost-gauge">
           <div class="boost-header">
             <span>NITRO BOOST</span>
@@ -628,18 +645,6 @@
 
     <!-- Télémétrie Dédiée Mode Spectateur (Coin Inférieur Droit, totalement en dehors du menu central du bas) -->
     <div id="spectator-telemetry-cluster" class="spectator-telemetry-cluster hidden">
-      <div id="spec-wind-box" class="wind-indicator-box hidden" title="Direction du vent relatif (mode Tempête)">
-        <div class="wind-arrow-disc">
-          <svg viewBox="0 0 40 40" class="wind-arrow-svg" id="spec-wind-arrow">
-            <path d="M 20 6 L 29 23 L 23 20.5 L 23 34 L 17 34 L 17 20.5 L 11 23 Z" fill="currentColor" />
-          </svg>
-        </div>
-        <div class="wind-meta">
-          <span class="wind-title">VENT</span>
-          <span class="wind-status" id="spec-wind-status">DOS</span>
-        </div>
-      </div>
-
       <div id="spec-boost-wrap" class="boost-gauge spectator-boost-gauge">
         <div class="boost-header">
           <span>NITRO / BOOST</span>
@@ -745,6 +750,6 @@
   <!-- Musique d'ambiance du Salon / Garage (fichiers MP3 externe avec fade-in / fade-out) -->
   <audio id="lobby-music" src="./salon.mp3" loop preload="auto"></audio>
 
-  <script type="module" src="js/main.js?v=25"></script>
+  <script type="module" src="js/main.js?v=32"></script>
 </body>
 </html>

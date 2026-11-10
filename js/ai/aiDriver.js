@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=25';
-import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=25';
+import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=32';
+import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=32';
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -30,17 +30,17 @@ const _WALL_PROBE_DISTS = [3.5, 5.5, 7.5, 9.0];
 const _projScratch = { index: 0, s: 0, lateral: 0, dist: 0, y: 0, slope: 0 };
 
 // Cône de détection des jetons élargi de +30% : distance portée à 32 m, angle élargi à 58,5° (45° * 1.3)
-const TOKEN_CONE_DIST = 42.0; // port?e minimale (?tendue dynamiquement selon la vitesse)
-const TOKEN_RANGE_MIN = 60.0;
-const TOKEN_RANGE_MAX = 110.0;
-const COS_TOKEN_CONE = Math.cos(65 * (Math.PI / 180)); // ~0.4226 (cône élargi à 65°) // ~0.5225
+const TOKEN_CONE_DIST = 55.0; // port?e minimale (?tendue dynamiquement selon la vitesse)
+const TOKEN_RANGE_MIN = 70.0;
+const TOKEN_RANGE_MAX = 135.0;
+const COS_TOKEN_CONE = Math.cos(72 * (Math.PI / 180)); // Cône élargi à 72° (144° de champ avant) // ~0.4226 (cône élargi à 65°) // ~0.5225
 const COS_30_DEG = Math.cos(Math.PI / 6);                        // ~0.8660 (rayons diagonaux ±30°)
 const SIN_30_DEG = Math.sin(Math.PI / 6);                        // 0.5000
 
 // Facteur d'accélération de la prise de décision (-30% de latence temporelle -> 1 / 0.70 ≈ 1.43x)
 const REACTION_SPEED_MULT = 1 / 0.70;
 // Autorité et amplitude de déplacement latéral multipliées par ~2.5x (manœuvres incisives et opportunistes)
-const LATERAL_STEERING_FORCE = 2.50;
+const LATERAL_STEERING_FORCE = 3.20;
 
 // Zone morte de braquage (1.5° = 0.02618 rad) pour interdire les micro-oscillations en ligne droite
 const STEER_DEADZONE_RAD = 1.5 * (Math.PI / 180); // ~0.02618
@@ -70,14 +70,14 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
       steerGain: 1.65,
       steerRateMult: 0.85,
       apexCut: 0.25,
-      boostSeekWeight: 1.35,
-      boostMaxLatDeviation: 4.5,
-      boostThreshold: 16,
+      boostSeekWeight: 2.20,       // Vise les boosts (+75%)
+      boostMaxLatDeviation: 5.5,
+      boostThreshold: 18,
       boostMaxCurvature: 0.0038,
-      corridorHalfWidth: 0.85,
+      corridorHalfWidth: 1.50,     // Liberté de trajectoire élargie (+75%)
       decisionRate: 1.25,
-      overtakeAggression: 0.82,
-      lateralSteeringForce: 2.15,
+      overtakeAggression: 1.45,    // Dépassements incisifs (+75%)
+      lateralSteeringForce: 2.75,
     },
     normal: {
       skillLevel: 0.75,
@@ -88,14 +88,14 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
       steerGain: 2.25,
       steerRateMult: 1.20,
       apexCut: 0.55,
-      boostSeekWeight: 1.95,
-      boostMaxLatDeviation: 6.2,
+      boostSeekWeight: 3.40,       // Détection prioritaire des boosts (+75%)
+      boostMaxLatDeviation: 7.8,
       boostThreshold: 8,
       boostMaxCurvature: 0.0058,
-      corridorHalfWidth: 1.65,
+      corridorHalfWidth: 2.80,     // Liberté de trajectoire élargie (+75%)
       decisionRate: 1.80,
-      overtakeAggression: 1.10,
-      lateralSteeringForce: 2.50,
+      overtakeAggression: 1.95,    // Dépassements très actifs (+75%)
+      lateralSteeringForce: 3.20,
     },
     hard: {
       skillLevel: 0.96,
@@ -106,14 +106,14 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
       steerGain: 2.85,
       steerRateMult: 1.55,
       apexCut: 0.92,
-      boostSeekWeight: 2.40,
-      boostMaxLatDeviation: 7.5,
+      boostSeekWeight: 4.20,       // Traque agressive de tous les boosts (+75%)
+      boostMaxLatDeviation: 9.5,
       boostThreshold: 2,
       boostMaxCurvature: 0.0092,
-      corridorHalfWidth: 2.65,
+      corridorHalfWidth: 3.80,     // Exploitation de toute la piste (+75%)
       decisionRate: 2.45,
-      overtakeAggression: 1.38,
-      lateralSteeringForce: 2.80,
+      overtakeAggression: 2.75,    // Dépassements d'une agressivité maximale (+75%)
+      lateralSteeringForce: 3.60,
     },
   };
 
@@ -153,7 +153,7 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
   const boostAxis = makeZeroSumAxis(0.32);
   const aggrAxis = makeZeroSumAxis(0.25);
   const reactAxis = makeZeroSumAxis(0.24);
-  const laneAxis = makeZeroSumAxis(2.15);
+  const laneAxis = makeZeroSumAxis(3.20);
 
   const behaviorKeys = Object.keys(AI_BEHAVIOR_PROFILES);
   const profiles = [];
@@ -333,7 +333,7 @@ export class AIDriver {
     if (v.finished) return false;
 
     this.sampleTimer += dt;
-    if (this.sampleTimer >= 0.7) {
+    if (this.sampleTimer >= 0.5) {
       const pos = v.chassisBody.position;
       const vel = v.chassisBody.velocity;
       const speed = Math.hypot(vel.x, vel.z);
@@ -341,7 +341,7 @@ export class AIDriver {
       const dz = pos.z - this.lastSampledPos.z;
       const displacementRate = Math.hypot(dx, dz) / this.sampleTimer;
 
-      if (speed < 1.0 || displacementRate < 1.0) {
+      if (speed < 1.2 || displacementRate < 1.0) {
         this.immobileSeconds += this.sampleTimer;
       } else {
         this.immobileSeconds = 0;
@@ -350,7 +350,9 @@ export class AIDriver {
       this.lastSampledPos.set(pos.x, pos.y, pos.z);
       this.sampleTimer = 0;
 
-      if (this.immobileSeconds >= CONFIG.ai.unstuckTime) {
+      // Déblocage automatique en 5 secondes maximum
+      const unstuckLimit = CONFIG.ai.unstuckTime || 5.0;
+      if (this.immobileSeconds >= unstuckLimit) {
         this._teleportToNearestWaypoint();
         return true;
       }
@@ -432,7 +434,7 @@ export class AIDriver {
         const proximityWeight = (visRange - dist) / visRange;
         // Priorité majeure si le jeton est presque sur la trajectoire directe du véhicule
         const pathAlignment = Math.max(0, 1.0 - latFromCar / 4.5);
-        const score = rarityWeight * (this.boostSeekWeight || 1.0) * (0.45 + 0.55 * proximityWeight + 0.90 * pathAlignment);
+        const score = rarityWeight * (this.boostSeekWeight || 2.5) * (0.65 + 0.65 * proximityWeight + 1.25 * pathAlignment);
         if (score > bestBoostScore) {
           bestBoostScore = score;
           bestBoostShift = clamp(reqShift, -maxLat, maxLat);
@@ -461,7 +463,7 @@ export class AIDriver {
       return out;
     }
     out.shift = bestBoostShift;
-    out.priorityBoost = bestBoostScore > 0.15;
+    out.priorityBoost = bestBoostScore > 0.08;
     return out;
   }
 
@@ -478,7 +480,7 @@ export class AIDriver {
     const L = this.layout;
     const beh = this.behavior;
     // Sonde avant réactive portée à 20 mètres (dépassements anticipés nets et autoritaires)
-    const probeMaxDist = clamp(24.0 + Math.max(0, v.forwardSpeed) * 0.6, 24.0, 48.0);
+    const probeMaxDist = clamp(32.0 + Math.max(0, v.forwardSpeed) * 0.8, 32.0, 65.0);
 
     let closestSlowCar = null;
     let closestDist = Infinity;
@@ -517,7 +519,7 @@ export class AIDriver {
     }
 
     // b) Vérification complémentaire dans le couloir avant (< 20 m) pour jusqu'à 10 véhicules
-    const lookOvertakeDist = Math.max(probeMaxDist, 28.0 * (this.overtakeAggression || beh.overtakeAggression || 1.0));
+    const lookOvertakeDist = Math.max(probeMaxDist, 42.0 * (this.overtakeAggression || beh.overtakeAggression || 1.0));
     for (let i = 0; i < allVehicles.length; i++) {
       const other = allVehicles[i];
       if (!other || other === v) continue;
@@ -547,7 +549,7 @@ export class AIDriver {
       }
 
       // Déport franc sur toute une largeur de voie (dépassement autoritaire)
-      const fullLaneShift = 4.2 * Math.min(2.5, this.lateralSteeringForce);
+      const fullLaneShift = 4.8 * Math.min(3.2, this.lateralSteeringForce);
       const desiredPassLat = clamp(closestSlowCar.trackLateral + passSide * fullLaneShift, -maxLat, maxLat);
       out.targetOvertakeShift = desiredPassLat - (L.racingLat[v.trackIndex] || 0);
 
@@ -655,13 +657,47 @@ export class AIDriver {
     v.getForwardVector(_fwd);
     v.getRightVector(_right);
 
+    // 1) Détection et gestion stricte du sens de circulation (anti-contresens absolu)
+    const tTrack = L.tangents[v.trackIndex];
+    const alignDot = _fwd.x * tTrack.x + _fwd.z * tTrack.z;
+    const crossTang = _fwd.x * tTrack.z - _fwd.z * tTrack.x;
+
+    if (alignDot < 0.15) {
+      this.wrongWayDuration = (this.wrongWayDuration || 0) + dt;
+
+      // Si le bot reste orienté à contresens plus de 5.0s sans réussir à pivoter, replacement direct sur la piste
+      if (this.wrongWayDuration > 5.0) {
+        this.wrongWayDuration = 0;
+        this._teleportToNearestWaypoint();
+        return;
+      }
+
+      // Si le bot a encore de la vitesse vers l'avant (roulant à contresens sur la piste) :
+      // Freinage d'urgence immédiat pour annuler la vitesse en sens inverse
+      if (v.forwardSpeed > 1.8) {
+        v.controls.throttle = 0;
+        v.controls.brake = 1.0;
+        v.controls.steer = crossTang >= 0 ? -1.0 : 1.0;
+        v.controls.boost = false;
+        return;
+      }
+
+      // Vitesse basse : manœuvre de demi-tour immédiate pour se réaligner dans le bon sens de course
+      const turnDir = crossTang >= 0 ? -1.0 : 1.0;
+      v.controls.throttle = 0.45;
+      v.controls.brake = 0;
+      v.controls.steer = turnDir;
+      v.controls.boost = false;
+      return;
+    } else {
+      this.wrongWayDuration = Math.max(0, (this.wrongWayDuration || 0) - dt * 2.5);
+    }
+
     if (this.reverseTimer > 0) {
       this.reverseTimer -= dt;
-      const t = L.tangents[v.trackIndex];
-      const cross = _fwd.x * t.z - _fwd.z * t.x;
       v.controls.throttle = 0;
       v.controls.brake = 0.85;
-      v.controls.steer = cross >= 0 ? -0.95 : 0.95;
+      v.controls.steer = crossTang >= 0 ? -0.95 : 0.95;
       v.controls.boost = false;
       return;
     }

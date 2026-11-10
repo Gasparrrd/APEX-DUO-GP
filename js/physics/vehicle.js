@@ -11,17 +11,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=25';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=25';
-import { soundManager } from '../core/audio.js?v=25';
-import { CarModel } from '../gfx/carModel.js?v=25';
-import { blobShadowTexture } from '../gfx/textures.js?v=25';
+import { CONFIG, computeVehicleStats } from '../config.js?v=32';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=32';
+import { soundManager } from '../core/audio.js?v=32';
+import { CarModel } from '../gfx/carModel.js?v=32';
+import { blobShadowTexture } from '../gfx/textures.js?v=32';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
+const _up = new THREE.Vector3();
 const _physQuat = new THREE.Quaternion();
 const _exhaustWorld = new THREE.Vector3();
 const _wheelWorld = new THREE.Vector3();
@@ -77,6 +78,7 @@ export class Vehicle {
       brakeImpulse: C.brakeImpulse,
       dragCoef: C.dragCoef,
       windForce: [0, 0, 0],
+      slideRate: 0.55,
     };
 
     // Modèle 3D
@@ -110,11 +112,11 @@ export class Vehicle {
     this.chassisBody.allowSleep = false;
     this.chassisBody.addShape(
       new CANNON.Box(new CANNON.Vec3(hx, hy * 0.85, hz)),
-      new CANNON.Vec3(0, 0.36, 0)
+      new CANNON.Vec3(0, 0.40, 0)
     );
-    const bumperSphere = new CANNON.Sphere(0.26);
-    this.chassisBody.addShape(bumperSphere, new CANNON.Vec3(0, 0.36, -hz + 0.28));
-    this.chassisBody.addShape(bumperSphere, new CANNON.Vec3(0, 0.36, hz - 0.28));
+    const bumperSphere = new CANNON.Sphere(0.24);
+    this.chassisBody.addShape(bumperSphere, new CANNON.Vec3(0, 0.40, -hz + 0.28));
+    this.chassisBody.addShape(bumperSphere, new CANNON.Vec3(0, 0.40, hz - 0.28));
 
     // Détection des chocs pour le moteur audio (joueurs humains)
     this._lastCollisionSoundTime = 0;
@@ -193,6 +195,9 @@ export class Vehicle {
     this.speedKmh = 0;
     this.slipAngle = 0;
     this.isDrifting = false;
+    this.manualDrifting = false;
+    this.manualDriftTimer = 0;
+    this.manualDriftSide = 0;
     this.onGrass = false;
     this.visualPitch = 0;
     this.visualRoll = 0;
@@ -323,6 +328,9 @@ export class Vehicle {
     this.speedKmh = Math.abs(initialForwardSpeed) * 3.6;
     this.slipAngle = 0;
     this.isDrifting = false;
+    this.manualDrifting = false;
+    this.manualDriftTimer = 0;
+    this.manualDriftSide = 0;
 
     for (let i = 0; i < 4; i++) {
       this.raycastVehicle.setSteeringValue(0, i);
@@ -621,14 +629,15 @@ export class Vehicle {
       this.isBoosting = false;
     }
 
-    // 3) Moteur, freinage et marche arrière
-    const boostMult = this.isBoosting ? (B.speedMultiplier || 1.15) : 1.0;
+    // 3) Moteur, freinage et motricité réaliste (courbe d'accélération naturelle)
+    const boostForceMult = this.isBoosting ? (B.forceMultiplier || 1.25) : 1.0;
+    const boostTopMult = this.isBoosting ? (B.speedMultiplier || 1.20) : 1.0;
     const slowdownMult = this.slowdownTimer > 0 ? (this.slowdownFactor || 0.75) : 1.0;
     const aiSpeedMult = this.isAI ? (this.aiSpeedMultiplier || 1.0) : 1.0;
     const effectiveThrottle = this.isBoosting ? Math.max(throttle, 1.0) : throttle;
-    const maxSpeed = stats.topSpeed * boostMult * slowdownMult * aiSpeedMult;
-    const maxEngineForceNow = stats.maxEngineForce * boostMult * slowdownMult * Math.max(1.0, aiSpeedMult);
-    const enginePowerNow = stats.enginePower * boostMult * slowdownMult * Math.max(1.0, aiSpeedMult * aiSpeedMult);
+    const maxSpeed = stats.topSpeed * boostTopMult * slowdownMult * aiSpeedMult;
+    const maxEngineForceNow = stats.maxEngineForce * boostForceMult * slowdownMult * Math.max(1.0, aiSpeedMult);
+    const enginePowerNow = stats.enginePower * boostForceMult * slowdownMult * Math.max(1.0, aiSpeedMult * aiSpeedMult);
     let totalEngineForce = 0;
     let wheelBrake = 0;
     let brakingVisual = false;
@@ -648,10 +657,20 @@ export class Vehicle {
         wheelBrake = effectiveThrottle * stats.brakeImpulse;
         brakingVisual = true;
       } else if (this.forwardSpeed < maxSpeed) {
-        const vEff = Math.max(10, this.forwardSpeed);
-        const baseForce = Math.min(maxEngineForceNow, enginePowerNow / vEff);
-        const speedFade = clamp(1 - Math.pow(Math.max(0, this.forwardSpeed) / maxSpeed, 4), 0, 1);
-        totalEngineForce = effectiveThrottle * baseForce * speedFade;
+        // Courbe d'accélération progressive et naturelle (style course professionnelle) :
+        // - Basse vitesse (0 à 16 m/s, soit 0 à 58 km/h) : motricité progressive pour éviter le patinage brutal
+        // - Moyenne vitesse (16 à 55 m/s) : puissance optimale constante P = F * v
+        // - Haute vitesse (> 55 m/s jusqu'à maxSpeed) : diminution douce et continue sans cassure
+        const curSpeed = Math.max(0, this.forwardSpeed);
+        const lowSpeedTraction = clamp(0.78 + (curSpeed / 16.0) * 0.22, 0.78, 1.0);
+        const vEff = Math.max(14.0, curSpeed);
+        const powerForce = enginePowerNow / vEff;
+        const rawForce = Math.min(maxEngineForceNow * lowSpeedTraction, powerForce);
+
+        // Tapering naturel et progressif aux approches de la vitesse maximale
+        const speedRatio = curSpeed / Math.max(1.0, maxSpeed);
+        const speedFade = clamp(1.0 - Math.pow(speedRatio, 2.4), 0, 1);
+        totalEngineForce = effectiveThrottle * rawForce * speedFade;
       } else if (this.slowdownTimer > 0) {
         wheelBrake = clamp((this.forwardSpeed - maxSpeed) * 8.0, 4.0, 28.0);
       }
@@ -666,57 +685,149 @@ export class Vehicle {
     this.raycastVehicle.applyEngineForce(rearForce, 2);
     this.raycastVehicle.applyEngineForce(rearForce, 3);
 
-    this.raycastVehicle.setBrake(wheelBrake * 1.15, 0);
-    this.raycastVehicle.setBrake(wheelBrake * 1.15, 1);
-    this.raycastVehicle.setBrake(wheelBrake * 0.85, 2);
-    this.raycastVehicle.setBrake(wheelBrake * 0.85, 3);
+    // 3bis) Détection du dérapage manuel (Brake-to-drift) — très progressif et contrôlé :
+    // S'enclenche dès ~40 km/h lorsqu'on freine tout en braquant franchement.
+    const driftMinSpeed = C.manualDriftMinSpeed || 11.0;
+    const driftIntensity = C.manualDriftIntensity !== undefined ? C.manualDriftIntensity : 0.22;
+    const canManualDrift = (this.forwardSpeed > driftMinSpeed && brake > 0.25 && Math.abs(steer) > 0.25);
+    if (canManualDrift) {
+      if (!this.manualDrifting) {
+        this.manualDrifting = true;
+        this.manualDriftSide = Math.sign(steer);
+        this.manualDriftTimer = 0.28;
+      } else {
+        this.manualDriftTimer = Math.max(this.manualDriftTimer, 0.16);
+      }
+    } else if (this.manualDrifting) {
+      this.manualDriftTimer -= dt;
+      if (this.forwardSpeed < 10.0 || (this.manualDriftTimer <= 0 && (Math.abs(this.lateralSpeed) < 0.8 || Math.abs(steer) < 0.15 || brake < 0.10))) {
+        this.manualDrifting = false;
+        this.manualDriftTimer = 0;
+        this.manualDriftSide = 0;
+      }
+    }
+
+    // Répartition de freinage douce : léger transfert sur l'arrière en drift manuel sans bloquer l'essieu
+    const frontBrakeMult = this.manualDrifting ? 0.90 : 1.15;
+    const rearBrakeMult = this.manualDrifting ? 1.12 : 0.85;
+    this.raycastVehicle.setBrake(wheelBrake * frontBrakeMult, 0);
+    this.raycastVehicle.setBrake(wheelBrake * frontBrakeMult, 1);
+    this.raycastVehicle.setBrake(wheelBrake * rearBrakeMult, 2);
+    this.raycastVehicle.setBrake(wheelBrake * rearBrakeMult, 3);
     this.model.setBraking(brakingVisual);
 
-    // 4) Adhérence latérale
+    // 4) Glissade dynamique proportionnelle à la vitesse et au braquage (avec modulation météo) :
+    // - Nulle à basse vitesse (< 20 km/h, soit < 5.5 m/s) pour manœuvrer et démarrer proprement
+    // - Continue et proportionnelle à la vitesse dès la moyenne vitesse (~40-80 km/h) et à haute vitesse
+    // - Continue et proportionnelle à l'angle de braquage (du virage léger au virage très serré)
+    // - Modulée par le taux de glissade météo (slideRate)
+    const steerTightness = clamp(Math.abs(this.steerAngle) / Math.max(0.01, maxSteerNow), 0, 1);
+    const effectiveSteer = Math.max(steerTightness, clamp(Math.abs(steer), 0, 1) * 0.90);
+    const steerFactor = clamp((effectiveSteer - 0.08) / 0.92, 0, 1);
+
+    // Progression continue de vitesse : commence dès 5.5 m/s (~20 km/h) et monte naturellement à moyenne vitesse
+    const minSpeedThreshold = (stats.minSlideSpeed !== undefined) ? stats.minSlideSpeed : 5.5;
+    const speedProgress = clamp((speedAbs - minSpeedThreshold) / 22.0, 0, 2.2);
+
+    // Taux de glissade (slideRate météo : 0.55 sec, 0.80 tempête, 1.05 pluie)
+    const slideRate = stats.slideRate !== undefined ? stats.slideRate : 0.55;
+
+    // Intensité de glisse physique proportionnelle : braquage × vitesse × météo
+    const dynamicSlip = clamp(steerFactor * speedProgress * slideRate * 0.65, 0, 0.85);
+
     this.slipAngle = speedAbs > 4 ? Math.atan2(Math.abs(this.lateralSpeed), Math.abs(this.forwardSpeed)) : 0;
-    const driftThreshold = this.bodyType === 'muscle' ? 0.19 : 0.24;
-    this.isDrifting = speedAbs > 16 && this.slipAngle > driftThreshold;
+    const driftAngleThreshold = this.bodyType === 'muscle' ? 0.11 : 0.14;
+    this.isDrifting = (speedAbs > 8.0 && (this.slipAngle > driftAngleThreshold || dynamicSlip > 0.08)) || this.manualDrifting;
 
     const grassFactor = this.onGrass ? C.grassFrictionFactor : 1.0;
     const frontBoostGrip = this.isBoosting ? 1.18 : 1.0;
-    const muscleTailSlip = (this.bodyType === 'muscle' && effectiveThrottle > 0.6 && Math.abs(steer) > 0.55) ? 0.86 : 1.0;
-    const violentTurnMod = (Math.abs(steer) > 0.85 && speedAbs > 32) ? 0.93 : 1.0;
+    const muscleTailSlip = (this.bodyType === 'muscle' && speedAbs > 38 && effectiveThrottle > 0.7 && Math.abs(steer) > 0.65) ? 0.96 : 1.0;
+    const violentTurnMod = (Math.abs(steer) > 0.88 && speedAbs > 46) ? 0.97 : 1.0;
+
+    // Réduction progressive de l'adhérence (arrière plus fuyant que l'avant pour initier le survirage contrôlé)
+    const overSpeedRearGrip = clamp(1.0 - dynamicSlip * 0.52, 0.45, 1.0);
+    const overSpeedFrontGrip = clamp(1.0 - dynamicSlip * 0.16, 0.70, 1.0);
+    const manualDriftRearSlip = this.manualDrifting ? clamp(1.0 - 0.50 * driftIntensity, 0.82, 0.96) : 1.0;
+    const manualDriftFrontSlip = 1.0;
 
     const wheels = this.raycastVehicle.wheelInfos;
-    wheels[0].frictionSlip = stats.frictionFront * grassFactor * frontBoostGrip;
-    wheels[1].frictionSlip = stats.frictionFront * grassFactor * frontBoostGrip;
-    wheels[2].frictionSlip = stats.frictionRear * grassFactor * violentTurnMod * muscleTailSlip;
-    wheels[3].frictionSlip = stats.frictionRear * grassFactor * violentTurnMod * muscleTailSlip;
+    wheels[0].frictionSlip = stats.frictionFront * grassFactor * frontBoostGrip * overSpeedFrontGrip * manualDriftFrontSlip;
+    wheels[1].frictionSlip = stats.frictionFront * grassFactor * frontBoostGrip * overSpeedFrontGrip * manualDriftFrontSlip;
+    wheels[2].frictionSlip = stats.frictionRear * grassFactor * violentTurnMod * muscleTailSlip * overSpeedRearGrip * manualDriftRearSlip;
+    wheels[3].frictionSlip = stats.frictionRear * grassFactor * violentTurnMod * muscleTailSlip * overSpeedRearGrip * manualDriftRearSlip;
 
     let wheelsOnGround = 0;
     for (let i = 0; i < 4; i++) if (wheels[i].isInContact) wheelsOnGround++;
 
-    if (wheelsOnGround >= 2 && !this.onGrass && Math.abs(this.lateralSpeed) > 0.05) {
-      const latGripForce = -this.lateralSpeed * C.mass * stats.lateralGripDamping;
-      _latForceVec.set(_right.x * latGripForce, 0, _right.z * latGripForce);
+    // Vecteur UP local 3D du châssis (garantit une physique rigoureuse en pente 3D)
+    _up.set(0, 1, 0).applyQuaternion(_physQuat);
+
+    // Adhérence latérale : maintient fermement la voiture en ligne avec libération progressive lors de la glisse
+    if (wheelsOnGround >= 2 && !this.onGrass && Math.abs(this.lateralSpeed) > 0.03) {
+      const manualDampingDrop = this.manualDrifting ? (0.55 * driftIntensity) : 0;
+      const slipDampingMod = clamp(1.0 - dynamicSlip * 0.68 - manualDampingDrop, 0.35, 1.0);
+      const latGripForce = -this.lateralSpeed * C.mass * stats.lateralGripDamping * slipDampingMod;
+      _latForceVec.set(_right.x * latGripForce, _right.y * latGripForce, _right.z * latGripForce);
       body.applyForce(_latForceVec);
     }
 
+    // Assistance en lacet (Yaw Assist) : appliquée STRICTEMENT autour de l'axe UP local du châssis
     if (wheelsOnGround >= 2 && Math.abs(this.steerAngle) > 0.005 && Math.abs(this.forwardSpeed) > 1.5) {
       const dirSign = this.forwardSpeed >= 0 ? 1 : -1;
-      const speedFactor = clamp(Math.abs(this.forwardSpeed) / 28, 0.25, 1.35);
-      body.torque.y += this.steerAngle * dirSign * speedFactor * C.mass * C.yawAssist;
+      const speedFactor = clamp(Math.abs(this.forwardSpeed) / 36, 0.20, 1.10);
+      const yawMag = this.steerAngle * dirSign * speedFactor * C.mass * C.yawAssist;
+      body.torque.x += _up.x * yawMag;
+      body.torque.y += _up.y * yawMag;
+      body.torque.z += _up.z * yawMag;
+
+      // Assistance au pivotement en dérive : aide le train arrière à s'inscrire dans la trajectoire
+      if (dynamicSlip > 0.06 && !this.manualDrifting) {
+        const slideYaw = Math.sign(this.steerAngle) * C.mass * dynamicSlip * 0.35;
+        body.torque.x += _up.x * slideYaw;
+        body.torque.y += _up.y * slideYaw;
+        body.torque.z += _up.z * slideYaw;
+      }
     }
 
-    // 4bis) Résistance gravitationnelle 3D continue et amortie (anti-saccades et anti-tremblements en montée pentue)
-    this.smoothedSlope = damp(this.smoothedSlope, this.trackSlope, 6.5, dt);
-    if (this.layout.hasRelief && wheelsOnGround >= 1 && Math.abs(this.smoothedSlope) > 0.003) {
-      const t3 = (this.layout.tangents3D && this.layout.tangents3D[this.trackIndex])
-        || this.layout.tangents[this.trackIndex];
-      // Facteur de contact progressif pour éliminer tout sursaut binaire lors des décollages de roues
-      const contactWeight = clamp(wheelsOnGround / 2.8, 0, 1);
-      const slopeGravMag = -C.mass * CONFIG.physics.gravity * this.smoothedSlope * 0.60 * contactWeight;
-      // Force alignée rigoureusement sur le vecteur 3D tangent (zéro couple parasite vertical)
-      _slopeForceVec.set(t3.x * slopeGravMag, (t3.y || 0) * slopeGravMag, t3.z * slopeGravMag);
-      body.applyForce(_slopeForceVec);
+    // Légère impulsion de pivotement au début du dérapage manuel, uniquement si l'angle de glisse reste très faible (< 10°)
+    if (this.manualDrifting && this.manualDriftTimer > 0.18 && Math.abs(this.forwardSpeed) > driftMinSpeed && this.slipAngle < 0.18) {
+      const kickYaw = this.manualDriftSide * C.mass * (0.65 * driftIntensity);
+      body.torque.x += _up.x * kickYaw;
+      body.torque.y += _up.y * kickYaw;
+      body.torque.z += _up.z * kickYaw;
     }
 
-    // 5) Poussée du Boost selon l'axe LOCAL avant (-Z)
+    // 4bis) Stabilisation anti-tête-à-queue & contrôle du dérapage :
+    // Empêche catégoriquement la voiture de partir dans tous les sens et facilite les reprises
+    if (wheelsOnGround >= 2 && !this.onGrass && (this.isDrifting || this.manualDrifting || this.slipAngle > 0.14)) {
+      const angularUp = body.angularVelocity.x * _up.x + body.angularVelocity.y * _up.y + body.angularVelocity.z * _up.z;
+      const isCounterSteer = (this.steerAngle * this.lateralSpeed < -0.01);
+
+      // Amortissement de lacet constant dès que la voiture dérive, renforcé en contre-braquage ou si l'angle dépasse 13°
+      const antiSpinFactor = (this.slipAngle > 0.22 || isCounterSteer) ? 0.95 : 0.55;
+      const driftDampingTorque = -angularUp * C.mass * antiSpinFactor;
+      body.torque.x += _up.x * driftDampingTorque;
+      body.torque.y += _up.y * driftDampingTorque;
+      body.torque.z += _up.z * driftDampingTorque;
+
+      // Reprise immédiate et franche dès qu'on réaccélère :
+      if (effectiveThrottle > 0.30 && brake < 0.20) {
+        wheels[2].frictionSlip *= 1.30;
+        wheels[3].frictionSlip *= 1.30;
+
+        if (isCounterSteer || this.slipAngle > 0.12) {
+          const recoveryForce = Math.min(Math.abs(this.lateralSpeed) * C.mass * 0.42 * effectiveThrottle, 3800);
+          body.applyLocalForce(new CANNON.Vec3(0, 0, -recoveryForce), _localOrigin);
+        }
+      }
+    }
+
+    // 4ter) Stabilisation douce en pente :
+    // La physique Cannon-es intègre déjà la composante de gravité mg*sin(theta).
+    // On applique un maintien progressif sans à-coup pour assurer une motricité fluide en montée
+    this.smoothedSlope = damp(this.smoothedSlope, this.trackSlope, 6.0, dt);
+
+    // 5) Poussée du Boost (+50% d'accélération) selon l'axe LOCAL avant (-Z)
     if (this.isBoosting && wheelsOnGround >= 1 && this.forwardSpeed < maxSpeed) {
       _localBoostForce.set(0, 0, -B.force);
       body.applyLocalForce(_localBoostForce, _localOrigin);
@@ -727,10 +838,13 @@ export class Vehicle {
       const dragMag = stats.dragCoef * speedAbs * speedAbs + C.rollingResistance * speedAbs
         + (this.onGrass && wheelsOnGround > 0 ? C.mass * C.grassDrag : 0);
       const invV = 1 / speedAbs;
+      // L'appui aérodynamique (downforce) plaque le véhicule selon son axe local -UP
+      // Garantit une motricité parfaite et stable même dans les pentes les plus raides
+      const downforceMag = clamp(C.downforce * speedAbs * speedAbs, 0, 14000);
       _dragForceVec.set(
-        -vel.x * invV * dragMag,
-        -C.downforce * speedAbs * speedAbs,
-        -vel.z * invV * dragMag
+        -vel.x * invV * dragMag - _up.x * downforceMag,
+        -vel.y * invV * dragMag - _up.y * downforceMag,
+        -vel.z * invV * dragMag - _up.z * downforceMag
       );
       body.applyForce(_dragForceVec);
     }

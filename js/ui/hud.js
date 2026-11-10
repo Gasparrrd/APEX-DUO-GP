@@ -5,8 +5,8 @@
  *  - Mode Spectateur (Plein écran 100%, masquage des compteurs joueurs, bandeau large en bas d'écran)
  *  - Mini-carte temps réel (jusqu'à 7 véhicules) et Écran de Classement Final avec accès Spectateur.
  */
-import { CONFIG } from '../config.js?v=25';
-import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=25';
+import { CONFIG } from '../config.js?v=32';
+import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=32';
 import * as THREE from 'three';
 
 const _hudFwd = new THREE.Vector3();
@@ -233,7 +233,7 @@ export class HUDController {
         this.specSpeedValue.textContent = String(kmh);
       }
       if (this.specSpeedArc) {
-        const speedRatio = clamp(kmh / 280, 0, 1);
+        const speedRatio = clamp(kmh / 360, 0, 1);
         this.specSpeedArc.style.strokeDashoffset = String(arcCircumference * (1 - speedRatio));
       }
 
@@ -275,7 +275,7 @@ export class HUDController {
       const kmh = Math.round(v.speedKmh);
       ui.speedValue.textContent = String(kmh);
 
-      const speedRatio = clamp(kmh / 280, 0, 1);
+      const speedRatio = clamp(kmh / 360, 0, 1);
       if (ui.speedArc) {
         ui.speedArc.style.strokeDashoffset = String(arcCircumference * (1 - speedRatio));
       }
@@ -377,28 +377,32 @@ export class HUDController {
     for (const v of allVehicles) {
       if (!v.isAI) continue;
       const isWatched = spectatorTarget === v;
-      const x = v.root.position.x * scale + ox;
-      const y = v.root.position.z * scale + oz;
+      const posX = v.chassisBody ? v.chassisBody.position.x : v.root.position.x;
+      const posZ = v.chassisBody ? v.chassisBody.position.z : v.root.position.z;
+      const x = posX * scale + ox;
+      const y = posZ * scale + oz;
       ctx.beginPath();
-      ctx.arc(x, y, isWatched ? 6.2 : 4.2, 0, Math.PI * 2);
-      ctx.fillStyle = v.model.cfg.color || '#e53935';
+      ctx.arc(x, y, isWatched ? 6.5 : 4.8, 0, Math.PI * 2);
+      ctx.fillStyle = v.model?.cfg?.color || '#ff1744';
       ctx.fill();
-      ctx.strokeStyle = isWatched ? '#ffffff' : '#111';
-      ctx.lineWidth = isWatched ? 2.2 : 1.2;
+      ctx.strokeStyle = isWatched ? '#ffffff' : '#000000';
+      ctx.lineWidth = isWatched ? 2.2 : 1.5;
       ctx.stroke();
     }
 
     for (const v of allVehicles) {
       if (v.isAI) continue;
       const isWatched = spectatorTarget === v;
-      const x = v.root.position.x * scale + ox;
-      const y = v.root.position.z * scale + oz;
+      const posX = v.chassisBody ? v.chassisBody.position.x : v.root.position.x;
+      const posZ = v.chassisBody ? v.chassisBody.position.z : v.root.position.z;
+      const x = posX * scale + ox;
+      const y = posZ * scale + oz;
       ctx.beginPath();
-      ctx.arc(x, y, isWatched ? 6.6 : 6.0, 0, Math.PI * 2);
-      ctx.fillStyle = v.model.cfg.color || '#29b6f6';
+      ctx.arc(x, y, isWatched ? 7.2 : 6.4, 0, Math.PI * 2);
+      ctx.fillStyle = v.model?.cfg?.color || '#00e5ff';
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.4;
       ctx.stroke();
     }
   }

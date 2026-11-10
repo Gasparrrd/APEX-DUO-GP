@@ -8,163 +8,172 @@ export const MAX_TOTAL_CARS = 10;
 
 export const CONFIG = {
   physics: {
-    step: 1 / 60,          // pas fixe de la simulation (s)
-    maxSubSteps: 3,        // world.step(1/60, deltaTime, 3) anti-saccades
-    gravity: 9.82,
-    solverIterations: 10,
+    step: 1 / 60,                    // Durée d'un pas de physique en secondes (60 Hz)
+    maxSubSteps: 3,                  // Nombre max de sous-pas physiques par image
+    gravity: 9.82,                   // Gravité en m/s²
+    solverIterations: 10,            // Itérations du solveur physique (stabilité des contacts)
   },
 
   render: {
-    maxPixelRatio: 2,      // Math.min(window.devicePixelRatio, 2)
-    cameraNear: 0.1,       // Plan proche stabilisé pour éviter tout conflit de z-buffer
-    cameraFar: 3000,       // Plan lointain optimisé (ratio far/near propre sans logarithmicDepthBuffer)
-    fogNear: 380,
-    fogFar: 2650,
-    separatorPx: 4,
+    maxPixelRatio: 2,                // Plafond du ratio de pixels de l'écran (performances)
+    cameraNear: 0.1,                 // Distance d'affichage minimale de la caméra
+    cameraFar: 3000,                 // Distance d'affichage maximale de la caméra
+    fogNear: 380,                    // Distance où le brouillard commence
+    fogFar: 2650,                    // Distance où le brouillard est total
+    separatorPx: 4,                  // Épaisseur de la ligne de séparation écran scindé (px)
   },
 
   track: {
-    halfWidth: 7,          // demi-largeur de la piste (m)
-    sampleSpacing: 2,      // échantillonnage de la ligne centrale (m)
-    curbWidth: 1.3,
-    barrierOffset: 5.5,    // distance bord de piste -> glissière (m)
-    barrierHeight: 2.4,
-    barrierThickness: 1.6,
-    numCheckpoints: 10,
+    halfWidth: 7,                    // Demi-largeur de la piste en mètres
+    sampleSpacing: 2,                // Espacement des points de la trajectoire en mètres
+    curbWidth: 1.3,                  // Largeur des vibreurs en mètres
+    barrierOffset: 5.5,              // Distance bord de piste / glissières en mètres
+    barrierHeight: 2.4,              // Hauteur des glissières en mètres
+    barrierThickness: 1.6,           // Épaisseur des glissières en mètres
+    numCheckpoints: 10,              // Nombre de checkpoints par tour
   },
 
   race: {
-    playerCount: 2,        // 1 = Mode Solo (plein écran), 2 = Écran Scindé
-    circuit: 'flat',       // 'flat' (Circuit 1 Plat) | 'mountain' (Circuit 2 Col de Montagne) | 'valley' (Circuit 3)
-    weather: 'sunny',      // 'sunny' | 'rain' | 'storm' | 'random'
-    globalGrip: 1.0,       // Curseur Adhérence Générale : 0.50 (50%) à 1.50 (150%), défaut 1.00 (100%)
-    engineSound: 'thermal',// 'electric' (Électrique) | 'thermal' (Thermique)
-    laps: 3,
-    bots: 3,
-    maxTotalCars: MAX_TOTAL_CARS,
-    difficulty: 'normal',  // 'easy' (Facile) | 'normal' (Moyen) | 'hard' (Difficile)
-    finishTimeout: 45,
+    playerCount: 2,                  // Mode par défaut (1 solo, 2 écran scindé)
+    circuit: 'flat',                 // Circuit par défaut
+    weather: 'sunny',                // Météo par défaut
+    globalGrip: 1.0,                 // Adhérence générale (1.0 = 100%)
+    engineSound: 'thermal',          // Son moteur par défaut
+    laps: 3,                         // Nombre de tours
+    bots: 3,                         // Nombre de bots IA
+    maxTotalCars: MAX_TOTAL_CARS,    // Nombre max de voitures sur la piste
+    difficulty: 'normal',            // Difficulté des bots par défaut
+    finishTimeout: 45,               // Délai (s) laissé aux retardataires après le vainqueur
   },
 
   car: {
-    mass: 1150,
-    chassisHalfExtents: [0.9, 0.38, 2.1],
-    chassisOffsetY: 0.05,
-    wheelRadius: 0.36,
-    wheelWidth: 0.28,
-    wheelHalfTrack: 0.8,
-    wheelFrontZ: -1.32,    // l'avant de la voiture est vers -Z
-    wheelRearZ: 1.28,
-    connectionY: 0.0,
-    suspensionRestLength: 0.32,
-    suspensionStiffness: 34,
-    dampingRelaxation: 3.2,
-    dampingCompression: 4.8,
-    maxSuspensionTravel: 0.28,
-    maxSuspensionForce: 1e6,
-    rollInfluence: 0.11,
-    frictionFront: 2.35,
-    frictionRear: 2.10,
-    lateralGripDamping: 4.2,
-    grassFrictionFactor: 0.62,
-    enginePower: 250000,
-    maxEngineForce: 7400,
-    frontTorqueShare: 0.25,
-    reverseForce: 2800,
-    maxReverseSpeed: 10,
-    brakeImpulse: 45,
-    engineBrake: 2.5,
-    maxSteer: 0.54,
-    minSteer: 0.24,
-    steerSpeedRef: 68,
-    steerRate: 4.2,
-    steerReturnRate: 5.5,
-    yawAssist: 0.45,
-    dragCoef: 0.80,
-    rollingResistance: 24,
-    downforce: 3.1,
-    grassDrag: 3.2,
-    topSpeed: 64,          // m/s (~230 km/h de base)
-    angularDamping: 0.38,
+    mass: 1150,                      // Masse de la voiture en kg
+    chassisHalfExtents: [0.9, 0.38, 2.1], // Demi-dimensions du châssis [largeur, hauteur, longueur] en m
+    chassisOffsetY: 0.10,            // Rehausse de la boîte de collision en m
+    wheelRadius: 0.36,               // Rayon des roues en m
+    wheelWidth: 0.28,                // Largeur des roues en m
+    wheelHalfTrack: 0.8,             // Demi-écartement des roues en m
+    wheelFrontZ: -1.32,              // Position des roues avant (avant = -Z)
+    wheelRearZ: 1.28,                // Position des roues arrière
+    connectionY: 0.0,                // Hauteur d'attache des suspensions
+    suspensionRestLength: 0.35,      // Longueur de repos des suspensions en m
+    suspensionStiffness: 36,         // Raideur des suspensions
+    dampingRelaxation: 3.8,          // Amortissement à la détente
+    dampingCompression: 3.4,         // Amortissement à la compression
+    maxSuspensionTravel: 0.32,       // Débattement max des suspensions en m
+    maxSuspensionForce: 24000,       // Force max des suspensions en N
+    rollInfluence: 0.08,             // Roulis de la carrosserie en virage
+    frictionFront: 3.25,             // Adhérence des pneus avant
+    frictionRear: 3.45,              // Adhérence des pneus arrière
+    lateralGripDamping: 8.8,         // Résistance au glissement latéral (plus haut = moins de glisse)
+    slideRate: 0.55,                 // Taux de glissade global de base (modulé en temps réel par la météo, la vitesse et le braquage)
+    manualDriftIntensity: 0.22,      // Force du dérapage manuel frein + braquage (0 = aucun, plus haut = plus violent)
+    manualDriftMinSpeed: 11,         // Vitesse min (m/s) pour déclencher le dérapage manuel au frein (~40 km/h)
+    grassFrictionFactor: 0.65,       // Adhérence restante sur l'herbe (0.65 = 65%)
+    enginePower: 250000,             // Puissance moteur en W
+    maxEngineForce: 7400,            // Force motrice max à basse vitesse en N
+    frontTorqueShare: 0.38,          // Part de motricité sur l'avant (0.38 = 38%)
+    reverseForce: 2800,              // Force en marche arrière en N
+    maxReverseSpeed: 10,             // Vitesse max en marche arrière (m/s)
+    brakeImpulse: 45,                // Puissance de freinage
+    engineBrake: 2.5,                // Frein moteur quand on lâche l'accélérateur
+    maxSteer: 0.50,                  // Braquage max à basse vitesse (rad)
+    minSteer: 0.22,                  // Braquage à très haute vitesse (rad)
+    steerSpeedRef: 75,               // Vitesse (m/s) où le braquage atteint son minimum
+    steerRate: 4.0,                  // Vitesse de braquage des roues
+    steerReturnRate: 5.8,            // Vitesse de retour des roues au centre
+    yawAssist: 0.26,                 // Aide au pivotement de la voiture en virage
+    dragCoef: 0.80,                  // Résistance de l'air
+    rollingResistance: 24,           // Frottement des pneus
+    downforce: 3.4,                  // Appui aérodynamique (plaque la voiture au sol)
+    grassDrag: 3.2,                  // Ralentissement supplémentaire dans l'herbe
+    topSpeed: 80,                    // Vitesse max de base en m/s
+    angularDamping: 0.52,            // Amortissement des rotations (anti tête-à-queue)
   },
 
   boost: {
-    maxEnergy: 100,
-    startEnergy: 15,       // Tous les joueurs et bots démarrent avec 15% de boost
-    drain: 100 / 7.5,      // ~13,33% par seconde : une jauge pleine à 100% s'épuise en 7,5s continues (-25% durée)
-    regen: 0,              // Aucune régénération passive automatique
-    checkpointBonus: 0,    // Recharge uniquement par ramassage des jetons sur la piste
-    speedMultiplier: 1.15, // +15% sur la vitesse instantanée maximale et la force motrice
-    forceMultiplier: 1.15, // +15% sur la force motrice
-    force: 3800,           // Poussée locale directe vers l'avant (-Z)
-    topSpeedBonus: 9.6,    // +15% de 64 m/s
-    tokenCount: 7,         // 6 jetons de boost sur le circuit (5 standards +25% + 1 rare +40%)
-    normalBonus: 25,       // +25% de boost (6 jetons standards cyan/bleu translucide)
-    rareBonus: 40,         // +40% de boost (1 jeton rare unique doré/orange translucide)
-    slowdownTokenCount: 6, // 5 jetons ralentisseurs (malus rouge) répartis sur le circuit
-    slowdownFactor: 0.75,  // -25% sur la vitesse actuelle et la puissance moteur
-    slowdownDuration: 3.0, // Durée du malus de ralentissement : 2,5 secondes
-    activeMinTime: 3.0,    // Durée minimale de la phase ACTIVE (3s)
-    activeMaxTime: 10.0,   // Durée maximale de la phase ACTIVE (10s)
-    cooldownMinTime: 3.0,  // Durée minimale de la phase COOLDOWN (3s)
-    cooldownMaxTime: 10.0, // Durée maximale de la phase COOLDOWN (10s)
-    respawnTime: 6.5,      // Moyenne de référence
+    maxEnergy: 100,                  // Capacité max du boost (%)
+    startEnergy: 20,                 // Boost au départ (%)
+    drain: 100 / 7.5,                // Consommation du boost (%/s)
+    regen: 0,                        // Recharge passive du boost (0 = aucune)
+    checkpointBonus: 0,              // Boost gagné par checkpoint
+    speedMultiplier: 1.50,           // Multiplicateur de vitesse max pendant le boost
+    forceMultiplier: 1.25,           // Multiplicateur de force motrice pendant le boost
+    force: 5700,                     // Poussée directe du boost en N
+    topSpeedBonus: 12.0,             // Bonus de vitesse de pointe pendant le boost (m/s)
+    tokenCount: 7,                   // Nombre de jetons de boost
+    normalBonus: 25,                 // Boost donné par un jeton normal (%)
+    rareBonus: 40,                   // Boost donné par un jeton rare (%)
+    slowdownTokenCount: 7,           // Nombre de jetons ralentisseurs
+    slowdownFactor: 0.75,            // Multiplicateur de vitesse du malus
+    slowdownDuration: 3.0,           // Durée du malus (s)
+    activeMinTime: 3.0,              // Durée min d'activité d'un jeton (s)
+    activeMaxTime: 10.0,             // Durée max d'activité d'un jeton (s)
+    cooldownMinTime: 3.0,            // Attente min avant réapparition (s)
+    cooldownMaxTime: 10.0,           // Attente max avant réapparition (s)
+    respawnTime: 6.5,                // Délai moyen de réapparition d'un jeton (s)
   },
 
   ai: {
-    lateralAccel: 13.0,
-    brakeDecel: 9.2,
-    maxSpeed: 63,
-    lineMargin: 1.7,
-    unstuckTime: 8.5,
-    relaunchSpeed: 11.0,
+    lateralAccel: 14.5,              // Accélération latérale max tolérée par l'IA
+    brakeDecel: 10.5,                // Décélération de freinage de l'IA
+    maxSpeed: 80,                    // Vitesse max de référence de l'IA
+    lineMargin: 1.7,                 // Marge de l'IA par rapport aux bords de piste (m)
+    unstuckTime: 5.0,                // Délai (s) avant replacement d'un bot bloqué
+    relaunchSpeed: 11.0,             // Vitesse (m/s) donnée à un bot replacé
   },
 
   difficulty: {
     easy: {
-      label: 'Facile',
-      skill: 0.75,
-      maxSpeedFactor: 0.75,       // Vitesse de pointe plafonnée à 75%
-      speedSpread: 0.040,         // Écart autour de la moyenne (±4% à somme nulle entre les bots)
-      brakeLookaheadMult: 1.75,   // Freinage très anticipé avant les courbes
-      cornerSpeedFactor: 0.82,
-      steerGain: 1.55,            // Réactivité de braquage ralentie
-      steerRateMult: 0.68,
-      apexCut: 0.0,
-      boostSeekWeight: 0.0,       // Aucune déviation agressive pour chercher les boosts excentrés
-      boostMaxLatDeviation: 0.7,
-      boostThreshold: 24,
-      boostMaxCurvature: 0.0025,
+      label: 'Facile',               // Nom affiché
+      skill: 0.75,                   // Niveau de compétence global
+      maxSpeedFactor: 0.75,          // Part de la vitesse max utilisée
+      speedSpread: 0.040,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 1.75,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      cornerSpeedFactor: 0.82,       // Vitesse conservée en virage
+      steerGain: 1.55,               // Précision du volant
+      steerRateMult: 0.68,           // Rapidité du volant
+      apexCut: 0.0,                  // Tendance à couper à la corde
+      boostSeekWeight: 1.75,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 3.8,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 22,            // Boost min avant utilisation (%)
+      boostMaxCurvature: 0.0028,     // Courbure max pour booster
+      corridorHalfWidth: 1.5,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 1.30,      // Agressivité des dépassements
     },
     normal: {
-      label: 'Moyen',
-      skill: 0.90,
-      maxSpeedFactor: 0.90,       // Vitesse moyenne abaissée légèrement (90%)
-      speedSpread: 0.045,         // Écart autour de la moyenne (±4,5% à somme nulle entre les bots)
-      brakeLookaheadMult: 1.08,
-      cornerSpeedFactor: 0.94,
-      steerGain: 2.40,
-      steerRateMult: 1.00,
-      apexCut: 0.22,
-      boostSeekWeight: 1.0,
-      boostMaxLatDeviation: 3.2,
-      boostThreshold: 10,
-      boostMaxCurvature: 0.0038,
+      label: 'Moyen',                // Nom affiché
+      skill: 0.90,                   // Niveau de compétence global
+      maxSpeedFactor: 0.90,          // Part de la vitesse max utilisée
+      speedSpread: 0.045,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 1.08,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      cornerSpeedFactor: 0.94,       // Vitesse conservée en virage
+      steerGain: 2.40,               // Précision du volant
+      steerRateMult: 1.00,           // Rapidité du volant
+      apexCut: 0.28,                 // Tendance à couper à la corde
+      boostSeekWeight: 2.80,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 5.8,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 8,             // Boost min avant utilisation (%)
+      boostMaxCurvature: 0.0048,     // Courbure max pour booster
+      corridorHalfWidth: 2.7,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 1.95,      // Agressivité des dépassements
     },
     hard: {
-      label: 'Difficile',
-      skill: 1.04,
-      maxSpeedFactor: 1.04,       // Vitesse moyenne abaissée légèrement (104%)
-      speedSpread: 0.048,         // Écart autour de la moyenne (±4,8% à somme nulle entre les bots)
-      brakeLookaheadMult: 0.60,   // Freinage tardif en entrée de courbe
-      cornerSpeedFactor: 1.05,
-      steerGain: 3.15,            // Braquage incisif et maintien serré à la corde
-      steerRateMult: 1.35,
-      apexCut: 0.85,              // Trajectoire très serrée à la corde
-      boostSeekWeight: 1.95,      // Détection prioritaire des jetons de boost sans hésiter
-      boostMaxLatDeviation: 5.6,
-      boostThreshold: 2,          // Exploite le boost immédiatement en sortie de virage ou ligne droite
-      boostMaxCurvature: 0.0080,
+      label: 'Difficile',            // Nom affiché
+      skill: 1.04,                   // Niveau de compétence global
+      maxSpeedFactor: 1.04,          // Part de la vitesse max utilisée
+      speedSpread: 0.048,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 0.60,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      cornerSpeedFactor: 1.05,       // Vitesse conservée en virage
+      steerGain: 3.15,               // Précision du volant
+      steerRateMult: 1.35,           // Rapidité du volant
+      apexCut: 0.88,                 // Tendance à couper à la corde
+      boostSeekWeight: 3.80,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 8.2,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 2,             // Boost min avant utilisation (%)
+      boostMaxCurvature: 0.0095,     // Courbure max pour booster
+      corridorHalfWidth: 3.8,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 2.75,      // Agressivité des dépassements
     },
   },
 };
@@ -177,28 +186,28 @@ export const CONFIG = {
  */
 export const VEHICLE_MODIFIERS = {
   supercar: {
-    label: 'Supercar',
-    topSpeed: 1.15,
-    acceleration: 1.00,
-    grip: 1.10,
-    braking: 1.05,
-    description: 'Vitesse +15% · Accél. Neutre · Grip +10%',
+    label: 'Supercar',               // Nom affiché
+    topSpeed: 1.15,                  // Vitesse max de base en m/s
+    acceleration: 1.00,              // Multiplicateur d'accélération
+    grip: 1.10,                      // Adhérence / facilité à tourner
+    braking: 1.05,                   // Multiplicateur de freinage
+    description: 'Vitesse +15% · Accél. Neutre · Grip +10%', // Texte affiché dans le garage
   },
   muscle: {
-    label: 'Muscle Car',
-    topSpeed: 1.00,
-    acceleration: 1.20,
-    grip: 0.90,
-    braking: 0.95,
-    description: 'Vitesse Neutre · Couple +20% · Grip -10%',
+    label: 'Muscle Car',             // Nom affiché
+    topSpeed: 1.00,                  // Vitesse max de base en m/s
+    acceleration: 1.20,              // Multiplicateur d'accélération
+    grip: 0.90,                      // Adhérence / facilité à tourner
+    braking: 0.95,                   // Multiplicateur de freinage
+    description: 'Vitesse Neutre · Couple +20% · Grip -10%', // Texte affiché dans le garage
   },
   formula: {
-    label: 'Monoplace',
-    topSpeed: 0.90,
-    acceleration: 1.10,
-    grip: 1.25,
-    braking: 1.22,
-    description: 'Vitesse -10% · Accél. +10% · Grip +25% (Appui max)',
+    label: 'Monoplace',              // Nom affiché
+    topSpeed: 0.90,                  // Vitesse max de base en m/s
+    acceleration: 1.10,              // Multiplicateur d'accélération
+    grip: 1.25,                      // Adhérence / facilité à tourner
+    braking: 1.22,                   // Multiplicateur de freinage
+    description: 'Vitesse -10% · Accél. +10% · Grip +25% (Appui max)', // Texte affiché dans le garage
   },
 };
 
@@ -210,53 +219,56 @@ export const VEHICLE_MODIFIERS = {
  */
 export const WEATHER_MODIFIERS = {
   sunny: {
-    label: 'Ensoleillé (Sec)',
-    topSpeed: 1.00,
-    acceleration: 1.00,
-    grip: 1.10, // Adhérence améliorée par temps sec (+10%)
-    windForce: [0, 0, 0],
-    dragMultiplier: 1.00,
-    skyColor: 0x6ea8df,
-    fogColor: 0x8ec2ef,
-    fogNear: 380,
-    fogFar: 2650,
-    sunIntensity: 1.95,
-    hemiIntensity: 1.05,
-    roadRoughness: 0.84,
+    label: 'Ensoleillé (Sec)',       // Nom affiché
+    topSpeed: 1.00,                  // Vitesse max de base en m/s
+    acceleration: 1.00,              // Multiplicateur d'accélération
+    grip: 1.0,                       // Adhérence / facilité à tourner
+    slideRate: 0.55,                 // TAUX DE GLISSADE sur sol sec (glisse continue proportionnelle à la vitesse et au braquage)
+    windForce: [0, 0, 0],            // Force du vent [X, Y, Z] en N
+    dragMultiplier: 1.00,            // Multiplicateur de résistance de l'air
+    skyColor: 0x6ea8df,              // Couleur du ciel
+    fogColor: 0x8ec2ef,              // Couleur du brouillard
+    fogNear: 380,                    // Distance où le brouillard commence
+    fogFar: 2650,                    // Distance où le brouillard est total
+    sunIntensity: 1.95,              // Intensité du soleil
+    hemiIntensity: 1.05,             // Lumière d'ambiance
+    roadRoughness: 0.84,             // Aspect visuel de la route (0 = brillant) — sans effet sur la physique
   },
   rain: {
-    label: 'Pluvieux',
-    topSpeed: 0.97,
-    acceleration: 0.95,
-    grip: 0.68, // Adhérence réduite par temps de pluie
-    windForce: [220, 0, -160],
-    dragMultiplier: 1.04,
-    skyColor: 0x22262a,
-    fogColor: 0x22262a,
-    fogExp2Density: 0.015,
-    fogNear: 40,
-    fogFar: 280,
-    sunIntensity: 0.62,
-    hemiIntensity: 0.68,
-    roadRoughness: 0.18,
-    roadMetalness: 0.28,
+    label: 'Pluvieux',               // Nom affiché
+    topSpeed: 0.97,                  // Vitesse max de base en m/s
+    acceleration: 0.95,              // Multiplicateur d'accélération
+    grip: 1.0,                       // Adhérence / facilité à tourner
+    slideRate: 1.05,                 // TAUX DE GLISSADE sous la pluie (+90% de glisse par rapport au sec)
+    windForce: [220, 0, -160],       // Force du vent [X, Y, Z] en N
+    dragMultiplier: 1.04,            // Multiplicateur de résistance de l'air
+    skyColor: 0x22262a,              // Couleur du ciel
+    fogColor: 0x22262a,              // Couleur du brouillard
+    fogExp2Density: 0.015,           // Densité du brouillard
+    fogNear: 40,                     // Distance où le brouillard commence
+    fogFar: 280,                     // Distance où le brouillard est total
+    sunIntensity: 0.62,              // Intensité du soleil
+    hemiIntensity: 0.68,             // Lumière d'ambiance
+    roadRoughness: 0.18,             // Aspect visuel de la route (0 = brillant) — sans effet sur la physique
+    roadMetalness: 0.28,             // Reflets visuels de la route — sans effet sur la physique
   },
   storm: {
-    label: 'Tempête / Venteux',
-    topSpeed: 0.94,
-    acceleration: 0.96,
-    grip: 0.74, // Adhérence réduite par temps de tempête
-    windForce: [1200, 0, -900], // Vecteur de vent constant et puissant (~1500 N homogène)
-    dragMultiplier: 1.09,
-    skyColor: 0x1c2024,
-    fogColor: 0x22262a,
-    fogExp2Density: 0.0165,
-    fogNear: 35,
-    fogFar: 240,
-    sunIntensity: 0.48,
-    hemiIntensity: 0.55,
-    roadRoughness: 0.22,
-    roadMetalness: 0.25,
+    label: 'Tempête / Venteux',      // Nom affiché
+    topSpeed: 0.94,                  // Vitesse max de base en m/s
+    acceleration: 0.96,              // Multiplicateur d'accélération
+    grip: 0.90,                      // Adhérence / facilité à tourner
+    slideRate: 0.80,                 // TAUX DE GLISSADE sous tempête (+45% de glisse par rapport au sec)
+    windForce: [1200, 0, -900],      // Force du vent [X, Y, Z] en N
+    dragMultiplier: 1.09,            // Multiplicateur de résistance de l'air
+    skyColor: 0x1c2024,              // Couleur du ciel
+    fogColor: 0x22262a,              // Couleur du brouillard
+    fogExp2Density: 0.0165,          // Densité du brouillard
+    fogNear: 35,                     // Distance où le brouillard commence
+    fogFar: 240,                     // Distance où le brouillard est total
+    sunIntensity: 0.48,              // Intensité du soleil
+    hemiIntensity: 0.55,             // Lumière d'ambiance
+    roadRoughness: 0.22,             // Aspect visuel de la route (0 = brillant) — sans effet sur la physique
+    roadMetalness: 0.25,             // Reflets visuels de la route — sans effet sur la physique
   },
 };
 
@@ -280,6 +292,7 @@ export function computeVehicleStats(bodyType = 'supercar', weatherKey = 'sunny',
   target.brakeImpulse = base.brakeImpulse * vMod.braking * Math.sqrt(wMod.grip);
   target.dragCoef = base.dragCoef * wMod.dragMultiplier;
   target.windForce = wMod.windForce;
+  target.slideRate = (wMod.slideRate !== undefined) ? wMod.slideRate : (base.slideRate || 0.55);
   return target;
 }
 
@@ -291,40 +304,40 @@ export function computeVehicleStats(bodyType = 'supercar', weatherKey = 'sunny',
  */
 export const AI_BEHAVIOR_PROFILES = {
   prudent: {
-    key: 'prudent',
-    label: 'Prudent',
-    maxSpeedFactor: 0.75,
-    brakeLookaheadMult: 1.55,
-    cornerSpeedFactor: 0.84,
-    apexCut: 0.15,
-    corridorHalfWidth: 0.7, // Trajectoire tendue et stable
-    overtakeAggression: 0.75,
-    boostThreshold: 20,
-    decisionRate: 1.0,
+    key: 'prudent',                  // Identifiant du profil
+    label: 'Prudent',                // Nom affiché
+    maxSpeedFactor: 0.75,            // Part de la vitesse max utilisée
+    brakeLookaheadMult: 1.55,        // Distance d'anticipation du freinage (plus bas = freine tard)
+    cornerSpeedFactor: 0.84,         // Vitesse conservée en virage
+    apexCut: 0.15,                   // Tendance à couper à la corde
+    corridorHalfWidth: 1.5,          // Liberté de déviation autour de la trajectoire (m)
+    overtakeAggression: 1.35,        // Agressivité des dépassements
+    boostThreshold: 20,              // Boost min avant utilisation (%)
+    decisionRate: 1.1,               // Fréquence de décision de l'IA (par seconde)
   },
   balanced: {
-    key: 'balanced',
-    label: 'Équilibré',
-    maxSpeedFactor: 0.91,
-    brakeLookaheadMult: 1.15,
-    cornerSpeedFactor: 0.96,
-    apexCut: 0.45,
-    corridorHalfWidth: 1.6, // Variations fluides sans zigzag
-    overtakeAggression: 1.40,
-    boostThreshold: 8,
-    decisionRate: 1.6,
+    key: 'balanced',                 // Identifiant du profil
+    label: 'Équilibré',              // Nom affiché
+    maxSpeedFactor: 0.91,            // Part de la vitesse max utilisée
+    brakeLookaheadMult: 1.15,        // Distance d'anticipation du freinage (plus bas = freine tard)
+    cornerSpeedFactor: 0.96,         // Vitesse conservée en virage
+    apexCut: 0.45,                   // Tendance à couper à la corde
+    corridorHalfWidth: 2.7,          // Liberté de déviation autour de la trajectoire (m)
+    overtakeAggression: 2.45,        // Agressivité des dépassements
+    boostThreshold: 8,               // Boost min avant utilisation (%)
+    decisionRate: 1.7,               // Fréquence de décision de l'IA (par seconde)
   },
   aggressive: {
-    key: 'aggressive',
-    label: 'Agressif',
-    maxSpeedFactor: 1.05,
-    brakeLookaheadMult: 0.78,
-    cornerSpeedFactor: 1.08,
-    apexCut: 0.92,
-    corridorHalfWidth: 2.8, // Exploitation maximale des cordes et dégagements
-    overtakeAggression: 2.20,
-    boostThreshold: 2,
-    decisionRate: 2.4,
+    key: 'aggressive',               // Identifiant du profil
+    label: 'Agressif',               // Nom affiché
+    maxSpeedFactor: 1.05,            // Part de la vitesse max utilisée
+    brakeLookaheadMult: 0.78,        // Distance d'anticipation du freinage (plus bas = freine tard)
+    cornerSpeedFactor: 1.08,         // Vitesse conservée en virage
+    apexCut: 0.92,                   // Tendance à couper à la corde
+    corridorHalfWidth: 3.8,          // Liberté de déviation autour de la trajectoire (m)
+    overtakeAggression: 3.60,        // Agressivité des dépassements
+    boostThreshold: 2,               // Boost min avant utilisation (%)
+    decisionRate: 2.5,               // Fréquence de décision de l'IA (par seconde)
   },
 };
 

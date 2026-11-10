@@ -7432,7 +7432,7 @@ class RaycastVehicle {
     this.updateWheelTransformWorld(wheel);
     const chassisBody = this.chassisBody;
     let depth = -1;
-    const raylen = wheel.suspensionRestLength + wheel.radius;
+    const raylen = wheel.suspensionRestLength + wheel.radius + (wheel.maxSuspensionTravel || 0.25);
     wheel.directionWorld.scale(raylen, rayvector);
     const source = wheel.chassisConnectionPointWorld;
     source.vadd(rayvector, target);
