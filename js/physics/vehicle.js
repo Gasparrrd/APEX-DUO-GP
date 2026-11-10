@@ -11,11 +11,11 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=32';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=32';
-import { soundManager } from '../core/audio.js?v=32';
-import { CarModel } from '../gfx/carModel.js?v=32';
-import { blobShadowTexture } from '../gfx/textures.js?v=32';
+import { CONFIG, computeVehicleStats } from '../config.js?v=33';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=33';
+import { soundManager } from '../core/audio.js?v=33';
+import { CarModel } from '../gfx/carModel.js?v=33';
+import { blobShadowTexture } from '../gfx/textures.js?v=33';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;
@@ -549,6 +549,7 @@ export class Vehicle {
     this.trackLateral = proj.lateral;
     this.trackY = proj.y || 0;
     this.trackSlope = proj.slope || 0;
+    this.inTunnel = Boolean(this.layout.isInTunnel && this.layout.isInTunnel(body.position.x, body.position.y, body.position.z));
     this.onGrass = Math.abs(proj.lateral) > this.layout.halfWidth + 0.35;
 
     if (body.position.y < this.trackY - 3.5) {
@@ -600,12 +601,14 @@ export class Vehicle {
 
     const { throttle, brake, steer, boost } = this.controls;
 
-    // 1) Direction
+    // 1) Direction (autorité modulée harmonieusement par le grip du véhicule)
+    const vGrip = clamp(stats.vehicleGrip || 1.0, 0.70, 1.40);
     const speedRatio = clamp(speedAbs / C.steerSpeedRef, 0, 1);
-    const maxSteerNow = C.maxSteer + (C.minSteer - C.maxSteer) * Math.pow(speedRatio, 0.85);
+    const minSteerEffective = C.minSteer * (0.55 + 0.45 * vGrip);
+    const maxSteerNow = C.maxSteer + (minSteerEffective - C.maxSteer) * Math.pow(speedRatio, 0.85);
     const targetSteer = clamp(steer, -1, 1) * maxSteerNow;
     const baseRate = Math.abs(targetSteer) > Math.abs(this.steerAngle) ? C.steerRate : C.steerReturnRate;
-    const rate = baseRate * (this.isAI ? (this.aiSteerRateMult || 1.0) : 1.0);
+    const rate = baseRate * (0.65 + 0.35 * vGrip) * (this.isAI ? (this.aiSteerRateMult || 1.0) : 1.0);
     this.steerAngle = moveTowards(this.steerAngle, targetSteer, rate * dt);
     this.raycastVehicle.setSteeringValue(this.steerAngle, 0);
     this.raycastVehicle.setSteeringValue(this.steerAngle, 1);
@@ -629,7 +632,9 @@ export class Vehicle {
       this.isBoosting = false;
     }
 
-    // 3) Moteur, freinage et motricité réaliste (courbe d'accélération naturelle)
+    // 3) Moteur, freinage et motricité réaliste (poids 1:1 harmonisés entre topSpeed et acceleration) :
+    // - `maxSpeed` (stats.topSpeed) fixe la véritable vitesse terminale sur le plat (indépendamment de l'accélération)
+    // - `maxEngineForceNow` / `enginePowerNow` (stats.acceleration) fixe la rapidité d'accélération de 0 à maxSpeed
     const boostForceMult = this.isBoosting ? (B.forceMultiplier || 1.25) : 1.0;
     const boostTopMult = this.isBoosting ? (B.speedMultiplier || 1.20) : 1.0;
     const slowdownMult = this.slowdownTimer > 0 ? (this.slowdownFactor || 0.75) : 1.0;
@@ -657,20 +662,21 @@ export class Vehicle {
         wheelBrake = effectiveThrottle * stats.brakeImpulse;
         brakingVisual = true;
       } else if (this.forwardSpeed < maxSpeed) {
-        // Courbe d'accélération progressive et naturelle (style course professionnelle) :
-        // - Basse vitesse (0 à 16 m/s, soit 0 à 58 km/h) : motricité progressive pour éviter le patinage brutal
-        // - Moyenne vitesse (16 à 55 m/s) : puissance optimale constante P = F * v
-        // - Haute vitesse (> 55 m/s jusqu'à maxSpeed) : diminution douce et continue sans cassure
+        // Courbe d'accélération normalisée sur u = curSpeed / maxSpeed :
+        // Garantit que stats.acceleration contrôle 100% du temps de montée en vitesse
+        // et que stats.topSpeed contrôle 100% de la vitesse de pointe atteinte.
         const curSpeed = Math.max(0, this.forwardSpeed);
-        const lowSpeedTraction = clamp(0.78 + (curSpeed / 16.0) * 0.22, 0.78, 1.0);
-        const vEff = Math.max(14.0, curSpeed);
-        const powerForce = enginePowerNow / vEff;
-        const rawForce = Math.min(maxEngineForceNow * lowSpeedTraction, powerForce);
+        const uNorm = clamp(curSpeed / Math.max(1.0, maxSpeed), 0, 1);
+        const lowSpeedTraction = clamp(0.80 + (uNorm / 0.20) * 0.20, 0.80, 1.0);
+        const vRef = Math.max(14.0, uNorm * 45.0);
+        const powerForce = enginePowerNow / vRef;
+        const accelForce = Math.min(maxEngineForceNow * lowSpeedTraction, powerForce);
 
-        // Tapering naturel et progressif aux approches de la vitesse maximale
-        const speedRatio = curSpeed / Math.max(1.0, maxSpeed);
-        const speedFade = clamp(1.0 - Math.pow(speedRatio, 2.4), 0, 1);
-        totalEngineForce = effectiveThrottle * rawForce * speedFade;
+        // Compensation de la traînée passive sous accélération pour atteindre exactement maxSpeed
+        const passiveDragNow = stats.dragCoef * curSpeed * curSpeed + C.rollingResistance * curSpeed;
+        const topEndTaper = clamp(1.0 - Math.pow(uNorm, 3.2), 0, 1);
+        const sustainTaper = clamp((1.0 - uNorm) / 0.06, 0, 1);
+        totalEngineForce = effectiveThrottle * (accelForce * topEndTaper + passiveDragNow * sustainTaper);
       } else if (this.slowdownTimer > 0) {
         wheelBrake = clamp((this.forwardSpeed - maxSpeed) * 8.0, 4.0, 28.0);
       }
@@ -732,8 +738,8 @@ export class Vehicle {
     // Taux de glissade (slideRate météo : 0.55 sec, 0.80 tempête, 1.05 pluie)
     const slideRate = stats.slideRate !== undefined ? stats.slideRate : 0.55;
 
-    // Intensité de glisse physique proportionnelle : braquage × vitesse × météo
-    const dynamicSlip = clamp(steerFactor * speedProgress * slideRate * 0.65, 0, 0.85);
+    // Intensité de glisse physique proportionnelle : braquage × vitesse × météo / grip du véhicule
+    const dynamicSlip = clamp((steerFactor * speedProgress * slideRate * 0.65) / vGrip, 0, 0.85);
 
     this.slipAngle = speedAbs > 4 ? Math.atan2(Math.abs(this.lateralSpeed), Math.abs(this.forwardSpeed)) : 0;
     const driftAngleThreshold = this.bodyType === 'muscle' ? 0.11 : 0.14;
@@ -775,7 +781,7 @@ export class Vehicle {
     if (wheelsOnGround >= 2 && Math.abs(this.steerAngle) > 0.005 && Math.abs(this.forwardSpeed) > 1.5) {
       const dirSign = this.forwardSpeed >= 0 ? 1 : -1;
       const speedFactor = clamp(Math.abs(this.forwardSpeed) / 36, 0.20, 1.10);
-      const yawMag = this.steerAngle * dirSign * speedFactor * C.mass * C.yawAssist;
+      const yawMag = this.steerAngle * dirSign * speedFactor * C.mass * C.yawAssist * vGrip;
       body.torque.x += _up.x * yawMag;
       body.torque.y += _up.y * yawMag;
       body.torque.z += _up.z * yawMag;
@@ -879,6 +885,7 @@ export class Vehicle {
     this.trackLateral = proj.lateral;
     this.trackY = proj.y || 0;
     this.trackSlope = proj.slope || 0;
+    this.inTunnel = Boolean(L.isInTunnel && L.isInTunnel(body.position.x, body.position.y, body.position.z));
 
     const t = L.tangents[this.trackIndex];
     this.getForwardVector(_fwd);
@@ -901,14 +908,21 @@ export class Vehicle {
 
     if (this.nextCheckpoint > 0) {
       const targetS = this.nextCheckpoint * cpSpacing;
+      const cpIdx = Math.floor(targetS / L.ds) % L.count;
+      const cpY = L.points[cpIdx] ? L.points[cpIdx].y : this.trackY;
+      // Segmentation 3D stricte des checkpoints (hauteur max de détection : 5.0 m)
+      // Empêche toute validation par erreur lors du croisement pont/tunnel ou crête/tunnel
+      const deltaY = Math.abs(body.position.y - cpY);
       const deltaS = wrapDelta(this.trackS, targetS, L.length);
-      if (Math.abs(deltaS) < 22 && alignment > 0.1) {
+      if (Math.abs(deltaS) < 22 && deltaY <= 5.0 && alignment > 0.1) {
         this.checkpointsPassed++;
         this.nextCheckpoint = (this.nextCheckpoint + 1) % numCP;
       }
     } else {
       const crossing = L.checkFinishLineCrossing(this.prevPhysicsPos, this.currPhysicsPos);
-      if (crossing.crossed && alignment > 0.1) {
+      const finishY = L.points[0] ? L.points[0].y : 0;
+      const deltaFinishY = Math.abs(body.position.y - finishY);
+      if (crossing.crossed && deltaFinishY <= 5.0 && alignment > 0.1) {
         const exactTime = Math.max(0, raceTime - dt * (1 - crossing.fraction));
         this.checkpointsPassed++;
 

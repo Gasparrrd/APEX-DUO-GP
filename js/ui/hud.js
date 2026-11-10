@@ -5,8 +5,8 @@
  *  - Mode Spectateur (Plein écran 100%, masquage des compteurs joueurs, bandeau large en bas d'écran)
  *  - Mini-carte temps réel (jusqu'à 7 véhicules) et Écran de Classement Final avec accès Spectateur.
  */
-import { CONFIG } from '../config.js?v=32';
-import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=32';
+import { CONFIG } from '../config.js?v=33';
+import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=33';
 import * as THREE from 'three';
 
 const _hudFwd = new THREE.Vector3();

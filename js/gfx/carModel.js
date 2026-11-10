@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=32';
+import { CONFIG } from '../config.js?v=33';
 
 const C = CONFIG.car;
 

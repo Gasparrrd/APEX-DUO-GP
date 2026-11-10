@@ -15,7 +15,7 @@
  *         * Au ralenti (véhicule à l'arrêt), maintien d'un « rumble » grave et stable à basse fréquence (~40–50 Hz)
  *  3. Effets sonores de course : ramassage des jetons de boost (normal +25% / rare +40%), boost, dérapage, collisions.
  */
-import { clamp } from './utils.js?v=32';
+import { clamp } from './utils.js?v=33';
 
 export const LOBBY_MUSIC_URL = './salon.mp3';
 
@@ -373,8 +373,29 @@ export class SoundManager {
     skidGain.connect(panner);
     skidNoise.start();
 
+    /* --- 5. Effet d'Écho / Réverbération dans le Tunnel (Web Audio API Delay + Filtre de résonance rocheuse) --- */
+    const tunnelDelay = ctx.createDelay(0.5);
+    tunnelDelay.delayTime.value = 0.085; // 85 ms de réflexion acoustique sur les parois rocheuses
+    const tunnelFilter = ctx.createBiquadFilter();
+    tunnelFilter.type = 'bandpass';
+    tunnelFilter.frequency.value = 540;
+    tunnelFilter.Q.value = 0.85;
+    const tunnelFeedback = ctx.createGain();
+    tunnelFeedback.gain.value = 0.44;
+    const tunnelWetGain = ctx.createGain();
+    tunnelWetGain.gain.value = 0; // Désactivé hors du tunnel, activé progressivement sous la roche
+
+    panner.connect(tunnelDelay);
+    tunnelDelay.connect(tunnelFilter);
+    tunnelFilter.connect(tunnelFeedback);
+    tunnelFeedback.connect(tunnelDelay);
+    tunnelFilter.connect(tunnelWetGain);
+    tunnelWetGain.connect(this.masterGain);
+
     return {
       panner,
+      tunnelWetGain,
+      inTunnel: false,
       // Thermique
       sawA,
       sawB,
@@ -514,7 +535,16 @@ export class SoundManager {
         ch.boostOscGain.gain.setTargetAtTime(0, now, 0.05);
         ch.boostNoiseGain.gain.setTargetAtTime(0, now, 0.05);
         ch.skidGain.gain.setTargetAtTime(0, now, 0.05);
+        if (ch.tunnelWetGain) ch.tunnelWetGain.gain.setTargetAtTime(0, now, 0.05);
+        ch.inTunnel = false;
         continue;
+      }
+
+      // Résonance et écho sous le tunnel rocheux (activé uniquement dans les coordonnées du tunnel)
+      const inTunnelNow = Boolean(activePlayer.inTunnel);
+      ch.inTunnel = inTunnelNow;
+      if (ch.tunnelWetGain) {
+        ch.tunnelWetGain.gain.setTargetAtTime(inTunnelNow ? 0.58 : 0.0, now, 0.075);
       }
 
       if (ch.panner.pan) {
@@ -627,6 +657,8 @@ export class SoundManager {
       ch.boostOscGain.gain.setTargetAtTime(0, now, 0.04);
       ch.boostNoiseGain.gain.setTargetAtTime(0, now, 0.04);
       ch.skidGain.gain.setTargetAtTime(0, now, 0.04);
+      if (ch.tunnelWetGain) ch.tunnelWetGain.gain.setTargetAtTime(0, now, 0.04);
+      ch.inTunnel = false;
     }
   }
 

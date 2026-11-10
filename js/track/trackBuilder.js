@@ -9,13 +9,13 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=32';
-import { seededRandom, wrap } from '../core/utils.js?v=32';
+import { CONFIG } from '../config.js?v=33';
+import { seededRandom, wrap } from '../core/utils.js?v=33';
 import {
   asphaltTexture, grassTexture, curbTexture, checkerTexture,
   blobShadowTexture, billboardTexture, chevronTexture,
   distanceBoardTexture, gantryTexture,
-} from '../gfx/textures.js?v=32';
+} from '../gfx/textures.js?v=33';
 
 export class TrackBuilder {
   /**
@@ -50,6 +50,9 @@ export class TrackBuilder {
     }
     if (this.layout.circuitId === 'lake') {
       this._buildLakeAndVegetationScenery();
+    }
+    if (this.layout.circuitId === 'grotto') {
+      this._buildGrottoScenery();
     }
     this._buildCircuitFlags();
     this._buildCurbs();
@@ -152,11 +155,20 @@ export class TrackBuilder {
       let shLeft = Math.min(desiredFlatDist, maxLeft);
       let shRight = Math.min(desiredFlatDist, maxRight);
 
-      // Sécurité anti-chevauchement avec un autre tronçon de piste
-      const xL = p.x - r.x * shLeft, zL = p.z - r.z * shLeft;
-      if (L.distanceToCenterline(xL, zL) < bd + 0.8) shLeft = bd + 0.8;
-      const xR = p.x + r.x * shRight, zR = p.z + r.z * shRight;
-      if (L.distanceToCenterline(xR, zR) < bd + 0.8) shRight = bd + 0.8;
+      // Sécurité anti-chevauchement avec un autre tronçon de piste ou pont/tunnel
+      const isGrottoSpan = L.circuitId === 'grotto' && (
+        (Math.abs(p.x) < 48 && p.z > -65 && p.z < -5 && p.y > 24) ||
+        (Math.abs(p.x) < 18 && p.z >= -106 && p.z <= 148)
+      );
+      if (isGrottoSpan) {
+        shLeft = bd + 0.4;
+        shRight = bd + 0.4;
+      } else {
+        const xL = p.x - r.x * shLeft, zL = p.z - r.z * shLeft;
+        if (L.distanceToCenterline(xL, zL) < bd + 0.8) shLeft = bd + 0.8;
+        const xR = p.x + r.x * shRight, zR = p.z + r.z * shRight;
+        if (L.distanceToCenterline(xR, zR) < bd + 0.8) shRight = bd + 0.8;
+      }
 
       this.shoulderOutDistLeft[idx] = shLeft;
       this.shoulderOutDistRight[idx] = shRight;
@@ -383,7 +395,11 @@ export class TrackBuilder {
         const zIn = p.z + r.z * side * inDist;
         const yIn = p.y - 0.05;
 
-        const isOnBridgeSpan = L.hasBridge && Math.abs(p.x) < 35 && Math.abs(p.z) < 84 && p.y > 9.0;
+        const isOnBridgeSpan = (L.circuitId === 'valley' && Math.abs(p.x) < 35 && Math.abs(p.z) < 84 && p.y > 9.0)
+          || (L.circuitId === 'grotto' && (
+            (Math.abs(p.x) < 52 && p.z > -68 && p.z < -2 && p.y > 22.0) ||
+            (Math.abs(p.x) < 22 && p.z >= -108 && p.z <= 150)
+          ));
 
         const kSigned = side * L.curvature[idx];
         const maxCurveDist = kSigned > 0.002 ? Math.max(inDist + 1.2, 0.66 / kSigned) : Math.max(skirtOuter, inDist + 10.0);
@@ -483,6 +499,7 @@ export class TrackBuilder {
       const rx = p.x + r.x * side * offset;
       const rz = p.z + r.z * side * offset;
       if (L.distanceToCenterline(rx, rz) < bd + 1.8) continue;
+      if (this._isGrottoExcludedZone(rx, rz)) continue;
       if (isLake && (((rx - 71) * (rx - 71)) / (152 * 152) + ((rz + 365) * (rz + 365)) / (88 * 88) < 1.0)) continue;
 
       const baseScale = 0.8 + rnd() * 1.7;
@@ -860,12 +877,14 @@ export class TrackBuilder {
 
     for (let i = 0; i < n; i += step) {
       const p = L.points[i], r = L.rights[i];
+      if (L.isInTunnel && L.isInTunnel(p.x, p.y, p.z)) continue;
       // Dans les points bas (p.y <= 15m), on place des drapeaux tous les 10 pas directement sur l'accotement plat ;
       // en hauteur, un drapeau tous les 20 pas.
       if (p.y > 15.0 && (i % 20 !== 0)) continue;
       for (const side of [-1, 1]) {
         const fx = p.x + r.x * side * bd;
         const fz = p.z + r.z * side * bd;
+        if (this._isGrottoExcludedZone(fx, fz)) continue;
         const fy = this.getTerrainHeight(fx, fz);
         m4.makeTranslation(fx, fy, fz);
         poles.setMatrixAt(count, m4);
@@ -1340,6 +1359,819 @@ export class TrackBuilder {
     }
   }
 
+  /**
+   * Indique si une coordonnée `(x, z)` se trouve dans l'emprise centrale du Circuit 5 (`grotto`)
+   * (tunnel rocheux, massif central, viaduc ou rivière du canyon) pour éviter tout conflit de placement générique.
+   */
+  _isGrottoExcludedZone(x, z) {
+    if (this.layout.circuitId !== 'grotto') return false;
+    // Couloir du tunnel rocheux + massif central + viaduc (x de -52 à +52, z de -112 à +152)
+    if (Math.abs(x) < 52 && z >= -112 && z <= 152) return true;
+    // Lit de la rivière au fond du canyon (autour de z = 96..185)
+    if (z >= 82 && z <= 192 && x >= -160 && x <= 180) return true;
+    return false;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Circuit 5 : « Le Col de la Grotte » (Mountain Pass & Under-tunnel) */
+  /* ------------------------------------------------------------------ */
+
+  _buildGrottoScenery() {
+    this._buildGrottoTunnelAndMountain();
+    this._buildGrottoViaductAndRiver();
+    this._buildGrottoSafetyBarriers();
+    this._buildGrottoLifeAndBuildings();
+    this._buildGrottoAlpineVegetation();
+  }
+
+  /**
+   * 1. La Grande Montagne Centrale & Le Long Tunnel Rocheux (x = 0, z de -100 à +26, Y = 0.5m) :
+   *  - Portails Nord (z = -100) et Sud (z = +26) avec arches en pierre/béton naturel
+   *  - Voûte intérieure sombre en roche taillée (totalement dégagée sur 126 m)
+   *  - Éclairage intérieur artificiel : guirlandes LED orange/jaunes émettrices et spots lumineux
+   *  - Effet visuel de brume lumineuse à l'intérieur du tunnel
+   *  - Massif rocheux central multi-échelles surplombant le tunnel et portant la Piste Supérieure (Y = 35.5m)
+   *    avec roche grise, mousse alpine et sommets enneigés.
+   */
+  _buildGrottoTunnelAndMountain() {
+    const group = new THREE.Group();
+    group.name = 'grottoTunnelAndMountain';
+    this.root.add(group);
+
+    const zStart = -100;
+    const zEnd = 26;
+    const tunnelLen = zEnd - zStart; // 126 m
+    const zMid = (zStart + zEnd) * 0.5; // -37 m
+    const tunnelFloorY = 0.5;
+    const tunnelRadius = 12.8;
+
+    const darkRockMat = new THREE.MeshLambertMaterial({
+      color: 0x22272e,
+      flatShading: true,
+      side: THREE.DoubleSide,
+    });
+    const stonePortalMat = new THREE.MeshLambertMaterial({ color: 0x6c737d, flatShading: true });
+    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x8b929a });
+    const ledOrangeMat = new THREE.MeshBasicMaterial({ color: 0xff9800 });
+    const ledYellowMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
+
+    // a) Voûte intérieure du tunnel (demi-cylindre supérieur au-dessus de Y = 0.5m, rayon 12.8m)
+    const vaultGeo = new THREE.CylinderGeometry(
+      tunnelRadius,
+      tunnelRadius,
+      tunnelLen,
+      16,
+      8,
+      true,
+      -Math.PI * 0.5,
+      Math.PI
+    );
+    vaultGeo.rotateX(Math.PI * 0.5);
+    // Déformation légère des sommets de la voûte (> 4m de haut) pour un aspect rocheux taillé
+    const vPosAttr = vaultGeo.attributes.position;
+    const rndVault = seededRandom(505);
+    for (let i = 0; i < vPosAttr.count; i++) {
+      const vx = vPosAttr.getX(i);
+      const vy = vPosAttr.getY(i);
+      const vz = vPosAttr.getZ(i);
+      if (vy > 2.5 && Math.abs(vz) < tunnelLen * 0.46) {
+        const jitter = (rndVault() - 0.5) * 0.65;
+        vPosAttr.setX(i, vx + jitter);
+        vPosAttr.setY(i, vy + jitter * 0.5);
+      }
+    }
+    vaultGeo.computeVertexNormals();
+    const vaultMesh = new THREE.Mesh(vaultGeo, darkRockMat);
+    vaultMesh.position.set(0, tunnelFloorY + 0.2, zMid);
+    group.add(vaultMesh);
+
+    // Trottoirs / banquettes de sécurité en béton le long des parois intérieures du tunnel
+    const curbWallGeo = new THREE.BoxGeometry(1.4, 1.35, tunnelLen);
+    for (const side of [-1, 1]) {
+      const curbWall = new THREE.Mesh(curbWallGeo, concreteMat);
+      curbWall.position.set(side * (this.layout.barrierDistance + 0.55), tunnelFloorY + 0.65, zMid);
+      group.add(curbWall);
+
+      // Bande LED continue orange/ambre à mi-hauteur sur chaque paroi
+      const stripGeo = new THREE.BoxGeometry(0.14, 0.16, tunnelLen - 2);
+      const strip = new THREE.Mesh(stripGeo, ledOrangeMat);
+      strip.position.set(side * (this.layout.barrierDistance - 0.12), tunnelFloorY + 2.4, zMid);
+      group.add(strip);
+    }
+
+    // b) Arches et spots lumineux intérieurs (tous les 9 mètres le long du tunnel)
+    const archRibGeo = new THREE.TorusGeometry(tunnelRadius - 0.25, 0.38, 6, 16, Math.PI);
+    const spotHousingGeo = new THREE.BoxGeometry(1.6, 0.24, 0.65);
+    const spotLensGeo = new THREE.PlaneGeometry(1.4, 0.45);
+    spotLensGeo.rotateX(Math.PI * 0.5);
+    const hazePlaneGeo = new THREE.PlaneGeometry(18.0, 7.5);
+    const hazeMat = new THREE.MeshBasicMaterial({
+      color: 0xffb74d,
+      transparent: true,
+      opacity: 0.055,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    for (let z = zStart + 6; z <= zEnd - 6; z += 9) {
+      const rib = new THREE.Mesh(archRibGeo, stonePortalMat);
+      rib.position.set(0, tunnelFloorY + 0.2, z);
+      group.add(rib);
+
+      // Double rampe de spots LED jaune/orange au plafond de la voûte
+      for (const sx of [-3.6, 3.6]) {
+        const housing = new THREE.Mesh(spotHousingGeo, stonePortalMat);
+        housing.position.set(sx, tunnelFloorY + 11.4, z);
+        const lens = new THREE.Mesh(spotLensGeo, ledYellowMat);
+        lens.position.set(sx, tunnelFloorY + 11.25, z);
+        group.add(housing, lens);
+      }
+
+      // Légère brume lumineuse intérieure (halo de résonance sous la roche)
+      if (Math.abs(z - zMid) < 48 && ((z - zStart) % 18 === 6)) {
+        const haze = new THREE.Mesh(hazePlaneGeo, hazeMat);
+        haze.position.set(0, tunnelFloorY + 4.2, z);
+        group.add(haze);
+      }
+    }
+
+    // Deux sources lumineuses ponctuelles ambrées à l'intérieur du tunnel
+    for (const lz of [zStart + 36, zEnd - 36]) {
+      const ptLight = new THREE.PointLight(0xffa726, 2.2, 65, 1.5);
+      ptLight.position.set(0, tunnelFloorY + 9.5, lz);
+      group.add(ptLight);
+    }
+
+    // c) Portails monumentaux d'entrée (Nord z = -100) et de sortie (Sud z = +26) en pierre & béton
+    const portalPillarGeo = new THREE.BoxGeometry(5.5, 15.5, 4.5);
+    const portalHeaderGeo = new THREE.BoxGeometry(34.0, 5.2, 4.8);
+    const portalArchRingGeo = new THREE.TorusGeometry(tunnelRadius + 0.1, 1.15, 7, 18, Math.PI);
+
+    for (const [pz, isEntry] of [[zStart, true], [zEnd, false]]) {
+      const portalGrp = new THREE.Group();
+      portalGrp.position.set(0, tunnelFloorY, pz);
+      group.add(portalGrp);
+
+      const leftPil = new THREE.Mesh(portalPillarGeo, stonePortalMat);
+      leftPil.position.set(-(tunnelRadius + 2.2), 7.5, 0);
+      const rightPil = new THREE.Mesh(portalPillarGeo, stonePortalMat);
+      rightPil.position.set(tunnelRadius + 2.2, 7.5, 0);
+      const header = new THREE.Mesh(portalHeaderGeo, concreteMat);
+      header.position.set(0, 14.2, 0);
+      const archRing = new THREE.Mesh(portalArchRingGeo, concreteMat);
+      archRing.position.set(0, 0.2, isEntry ? -1.4 : 1.4);
+      portalGrp.add(leftPil, rightPil, header, archRing);
+
+      // Panneau lumineux "TUNNEL DU COL — 126m" au fronton du portail
+      const signTex = billboardTexture(
+        isEntry ? 'TUNNEL DU COL · 126M' : 'SORTIE TUNNEL · VIADUC',
+        '#1b222c',
+        '#ffffff',
+        '#ff9800'
+      );
+      const signMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(14.5, 2.2),
+        new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide })
+      );
+      signMesh.position.set(0, 14.2, isEntry ? -2.55 : 2.55);
+      if (isEntry) signMesh.rotation.y = Math.PI;
+      portalGrp.add(signMesh);
+    }
+
+    // d) Grande Structure Rocheuse Centrale (La Montagne surplombant le tunnel et portant la Piste Supérieure à Y = 35.5m)
+    // Tous les volumes rocheux au-dessus du tunnel démarrent à Y >= 13.2m pour ne jamais obstruer la voûte !
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x555d66, flatShading: true });
+    const mossMat = new THREE.MeshLambertMaterial({ color: 0x41563c, flatShading: true });
+    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf0f5fa, flatShading: true });
+
+    // Socle rocheux massif soutenant la crête sommitale (de Y = 13.4m jusqu'à Y = 34.6m juste sous la route supérieure Y = 35.5m)
+    const ridgeCoreGeo = new THREE.BoxGeometry(132, 21.2, 48);
+    const ridgeCore = new THREE.Mesh(ridgeCoreGeo, rockMat);
+    ridgeCore.position.set(0, 24.0, -35);
+    group.add(ridgeCore);
+
+    // Flancs rocheux Est et Ouest de part et d'autre du tunnel (descendant jusqu'au sol Y = -0.5m pour `|x| > 16m`)
+    const flankGeo = new THREE.ConeGeometry(1, 1, 6);
+    flankGeo.translate(0, 0.5, 0);
+    const flankDefs = [
+      // Flancs bas soutenant la crête sans jamais dépasser Y = 33.5m sous la piste supérieure (z = -35)
+      [-36, -0.5, -72, 20, 33.0, rockMat],
+      [36, -0.5, -72, 20, 33.0, rockMat],
+      [-38, -0.5, -35, 22, 33.2, mossMat],
+      [38, -0.5, -35, 22, 33.2, mossMat],
+      [-36, -0.5, 0, 20, 32.5, rockMat],
+      [36, -0.5, 0, 20, 32.5, rockMat],
+      // Grands pics alpins enneigés dans les 4 quadrants hors du tunnel (|x| = 36) et hors de la crête (z = -74 et z = +4)
+      [-36, 12.0, -74, 16, 44, rockMat],
+      [36, 12.0, -74, 16, 46, rockMat],
+      [-36, 12.0, 4, 16, 40, rockMat],
+      [36, 12.0, 4, 16, 42, rockMat],
+    ];
+    for (const [fx, fy, fz, rad, h, mat] of flankDefs) {
+      const m = new THREE.Mesh(flankGeo, mat);
+      m.position.set(fx, fy, fz);
+      m.scale.set(rad, h, rad);
+      m.rotation.y = (fx + fz) * 0.1;
+      group.add(m);
+
+      // Neige éternelle sur les hauts sommets
+      if (fy + h > 46) {
+        const cap = new THREE.Mesh(flankGeo, snowMat);
+        cap.position.set(fx, fy + h * 0.62, fz);
+        cap.scale.set(rad * 0.42, h * 0.40, rad * 0.42);
+        cap.rotation.y = m.rotation.y;
+        group.add(cap);
+      }
+    }
+
+    // Couronne de rochers facettés et plaques de mousse/neige coiffant la voûte du tunnel (Y de 14.5m à 33.2m)
+    const boulderGeo = new THREE.DodecahedronGeometry(1.0, 0);
+    const rndMtn = seededRandom(808);
+    for (let k = 0; k < 48; k++) {
+      const bx = (rndMtn() - 0.5) * 116;
+      const bz = -90 + rndMtn() * 108;
+      const sx = 5.5 + rndMtn() * 7.5;
+      const sy = 3.5 + rndMtn() * 5.0;
+      const sz = 5.5 + rndMtn() * 7.5;
+      // Garantit qu'aucun rocher ne dépasse jamais Y = 33.5m sous l'emprise de la Piste Supérieure (z proche de -35, Y = 35.5m)
+      const distToUpperRoadZ = Math.abs(bz - (-35));
+      const maxTopY = distToUpperRoadZ < (this.layout.barrierDistance + sz + 8.0) ? 33.2 : 38.0;
+      const by = Math.min(maxTopY - sy, 15.0 + rndMtn() * 16.5);
+      const mat = by + sy > 33.8 ? snowMat : (rndMtn() > 0.45 ? rockMat : mossMat);
+      const rock = new THREE.Mesh(boulderGeo, mat);
+      rock.position.set(bx, by, bz);
+      rock.scale.set(sx, sy, sz);
+      rock.rotation.set(rndMtn() * 2, rndMtn() * 3, rndMtn() * 2);
+      group.add(rock);
+    }
+  }
+
+  /**
+   * 2. Le Pont / Viaduc à Arches (x = 0, z de +45 à +142) & La Rivière Animée au fond du Canyon :
+   *  - Rivière animée (plan bleu avec shader GPU de vagues légères) coulant au fond du ravin (Y = -4.2m)
+   *    et passant directement sous le grand pont à arches.
+   *  - Grand Viaduc en pierre et tablier métallique enjambant le canyon et la rivière.
+   */
+  _buildGrottoViaductAndRiver() {
+    const group = new THREE.Group();
+    group.name = 'grottoViaductAndRiver';
+    this.root.add(group);
+
+    // a) Lit rocheux du canyon & Rivière animée (passe sous le pont en z = 96, Y = -4.2m)
+    const canyonBedGeo = new THREE.PlaneGeometry(380, 56, 24, 4);
+    canyonBedGeo.rotateX(-Math.PI * 0.5);
+    const canyonBedMat = new THREE.MeshLambertMaterial({ color: 0x3b434c });
+    const canyonBed = new THREE.Mesh(canyonBedGeo, canyonBedMat);
+    canyonBed.position.set(0, -4.6, 96);
+    group.add(canyonBed);
+
+    const riverGeo = new THREE.PlaneGeometry(380, 34, 64, 12);
+    riverGeo.rotateX(-Math.PI * 0.5);
+    // Léger méandre sinueux le long du canyon
+    const rPos = riverGeo.attributes.position;
+    for (let i = 0; i < rPos.count; i++) {
+      const rx = rPos.getX(i);
+      const rz = rPos.getZ(i);
+      rPos.setZ(i, rz + Math.sin(rx * 0.025) * 10.0);
+    }
+    riverGeo.computeVertexNormals();
+
+    const riverMat = new THREE.MeshStandardMaterial({
+      color: 0x1578c2,
+      roughness: 0.16,
+      metalness: 0.35,
+      transparent: true,
+      opacity: 0.90,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.0,
+      polygonOffsetUnits: -3.0,
+    });
+    riverMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.spectatorUniforms.uTime;
+      shader.vertexShader = `uniform float uTime;\n` + shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         float wave = sin(transformed.x * 0.12 + uTime * 2.8) * 0.18
+                    + cos(transformed.z * 0.22 - uTime * 2.1) * 0.12;
+         transformed.y += wave;`
+      );
+    };
+    const riverMesh = new THREE.Mesh(riverGeo, riverMat);
+    riverMesh.position.set(0, -3.8, 96);
+    group.add(riverMesh);
+
+    // Berges rocheuses du canyon de part et d'autre de la rivière (en laissant libre le tablier du pont)
+    const bankMat = new THREE.MeshLambertMaterial({ color: 0x4f5850, flatShading: true });
+    const bankGeo = new THREE.BoxGeometry(380, 4.4, 8.5);
+    const northBank = new THREE.Mesh(bankGeo, bankMat);
+    northBank.position.set(0, -2.1, 68);
+    const southBank = new THREE.Mesh(bankGeo, bankMat);
+    southBank.position.set(0, -2.1, 124);
+    group.add(northBank, southBank);
+
+    // b) Le Grand Pont / Viaduc à arches (x = 0, z de +48 à +142)
+    const bridgeDeckWidth = (this.layout.barrierDistance + 1.4) * 2;
+    const bridgeLen = 96;
+    const bridgeCenterZ = 96;
+    const stoneMat = new THREE.MeshLambertMaterial({ color: 0x737a84, flatShading: true });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0x2f3742, metalness: 0.65, roughness: 0.38 });
+
+    // Poutre métallique longitudinale sous le tablier du viaduc
+    const deckUnderbeamGeo = new THREE.BoxGeometry(bridgeDeckWidth, 1.4, bridgeLen);
+    const deckUnderbeam = new THREE.Mesh(deckUnderbeamGeo, steelMat);
+    deckUnderbeam.position.set(0, 1.8, bridgeCenterZ);
+    group.add(deckUnderbeam);
+
+    // Piles en pierre et grandes arches métalliques/pierre enjambant la rivière
+    const pierGeo = new THREE.BoxGeometry(bridgeDeckWidth + 1.6, 8.5, 3.6);
+    const archGeo = new THREE.TorusGeometry(11.5, 0.95, 6, 16, Math.PI);
+    archGeo.rotateY(Math.PI * 0.5);
+
+    for (const pz of [60, 84, 108, 132]) {
+      const pier = new THREE.Mesh(pierGeo, stoneMat);
+      pier.position.set(0, -1.6, pz);
+      group.add(pier);
+    }
+    for (const az of [72, 96, 120]) {
+      for (const sx of [-(bridgeDeckWidth * 0.44), bridgeDeckWidth * 0.44]) {
+        const arch = new THREE.Mesh(archGeo, stoneMat);
+        arch.position.set(sx, -3.5, az);
+        arch.scale.set(1.0, 0.52, 1.0);
+        group.add(arch);
+      }
+    }
+
+    // Fermes et arches métalliques supérieures sur les côtés du pont (style viaduc alpin)
+    const sideTrussPostGeo = new THREE.BoxGeometry(0.45, 5.2, 0.45);
+    const sideTrussTopGeo = new THREE.BoxGeometry(0.50, 0.50, bridgeLen - 6);
+    for (const side of [-1, 1]) {
+      const xTruss = side * (this.layout.barrierDistance + 0.95);
+      const topBeam = new THREE.Mesh(sideTrussTopGeo, steelMat);
+      topBeam.position.set(xTruss, 7.6, bridgeCenterZ);
+      group.add(topBeam);
+
+      for (let z = 54; z <= 138; z += 12) {
+        const post = new THREE.Mesh(sideTrussPostGeo, steelMat);
+        post.position.set(xTruss, 5.0, z);
+        group.add(post);
+      }
+    }
+  }
+
+  /**
+   * 3. Sécurité Renforcée :
+   *  - Glissières métalliques doublées sur toute la Piste Supérieure et la crête (Y > 20m)
+   *  - Barrières de béton (type Jersey bicolores rouge/blanc et gris) dans les lacets et aux abords du tunnel/pont
+   *  - Balises réfléchissantes lumineuses le long du tracé
+   */
+  _buildGrottoSafetyBarriers() {
+    const L = this.layout;
+    const n = L.count;
+    const bd = L.barrierDistance;
+    const group = new THREE.Group();
+    group.name = 'grottoSafetyBarriers';
+    this.root.add(group);
+
+    // a) Glissières métalliques doublées en haute montagne (Y > 18m : ascension haute + crête sommitale + début descente)
+    const upperRailVerts = [];
+    const upperRailNorms = [];
+    const upperRailIdx = [];
+    let vCount = 0;
+
+    for (const side of [-1, 1]) {
+      for (const [y0, y1] of [[0.92, 1.22], [1.32, 1.58]]) {
+        for (let i = 0; i < n; i++) {
+          const iNext = (i + 1) % n;
+          const p0 = L.points[i], p1 = L.points[iNext];
+          if (p0.y < 18.0 && p1.y < 18.0) continue;
+
+          const r0 = L.rights[i], r1 = L.rights[iNext];
+          const x0 = p0.x + r0.x * side * bd, z0 = p0.z + r0.z * side * bd;
+          const x1 = p1.x + r1.x * side * bd, z1 = p1.z + r1.z * side * bd;
+          const nx = -r0.x * side, nz = -r0.z * side;
+
+          upperRailVerts.push(
+            x0, p0.y + y0, z0,
+            x0, p0.y + y1, z0,
+            x1, p1.y + y0, z1,
+            x1, p1.y + y1, z1
+          );
+          upperRailNorms.push(nx, 0.15, nz, nx, 0.15, nz, nx, 0.15, nz, nx, 0.15, nz);
+
+          const a = vCount, b = vCount + 1, c = vCount + 2, d = vCount + 3;
+          if (side > 0) upperRailIdx.push(a, b, c, b, d, c);
+          else upperRailIdx.push(a, c, b, b, c, d);
+          vCount += 4;
+        }
+      }
+    }
+
+    if (upperRailIdx.length > 0) {
+      const upperGeo = new THREE.BufferGeometry();
+      upperGeo.setAttribute('position', new THREE.Float32BufferAttribute(upperRailVerts, 3));
+      upperGeo.setAttribute('normal', new THREE.Float32BufferAttribute(upperRailNorms, 3));
+      upperGeo.setIndex(upperRailIdx);
+      const upperMat = new THREE.MeshStandardMaterial({
+        color: 0xd0d7e0,
+        metalness: 0.80,
+        roughness: 0.28,
+        side: THREE.DoubleSide,
+      });
+      group.add(new THREE.Mesh(upperGeo, upperMat));
+    }
+
+    // b) Barrières de béton (Jersey) et balises réfléchissantes (InstancedMesh)
+    const jerseyGeo = new THREE.BoxGeometry(0.65, 0.95, 3.2);
+    jerseyGeo.translate(0, 0.475, 0);
+    const jerseyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
+    const bollardGeo = new THREE.CylinderGeometry(0.09, 0.11, 1.15, 6);
+    bollardGeo.translate(0, 0.575, 0);
+    const bollardMat = new THREE.MeshBasicMaterial({ color: 0xff5722 });
+
+    const jerseyTransforms = [];
+    const jerseyColors = [];
+    const bollardTransforms = [];
+    const m4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3(1, 1, 1);
+
+    for (let i = 0; i < n; i += 3) {
+      const p = L.points[i], r = L.rights[i], t = L.tangents[i];
+      const yaw = Math.atan2(t.x, t.z);
+      quat.setFromEuler(new THREE.Euler(0, yaw, 0));
+
+      const isSharpTurn = Math.abs(L.curvature[i]) > 0.008;
+      const isBridgeOrTunnelApproach = Math.abs(p.x) < 15 && p.z > -135 && p.z < 145;
+
+      if (isSharpTurn || isBridgeOrTunnelApproach) {
+        for (const side of [-1, 1]) {
+          pos.set(p.x + r.x * side * (bd - 0.32), p.y, p.z + r.z * side * (bd - 0.32));
+          m4.compose(pos, quat, scl);
+          jerseyTransforms.push(m4.clone());
+          jerseyColors.push(((i / 3) % 2 === 0) ? 0xdde2e8 : (isSharpTurn ? 0xe53935 : 0x9aa2ac));
+        }
+      }
+
+      if (i % 6 === 0) {
+        for (const side of [-1, 1]) {
+          pos.set(p.x + r.x * side * (bd - 0.05), p.y + 0.55, p.z + r.z * side * (bd - 0.05));
+          m4.compose(pos, quat, scl);
+          bollardTransforms.push(m4.clone());
+        }
+      }
+    }
+
+    if (jerseyTransforms.length > 0) {
+      const jMesh = new THREE.InstancedMesh(jerseyGeo, jerseyMat, jerseyTransforms.length);
+      const col = new THREE.Color();
+      for (let i = 0; i < jerseyTransforms.length; i++) {
+        jMesh.setMatrixAt(i, jerseyTransforms[i]);
+        col.setHex(jerseyColors[i]);
+        jMesh.setColorAt(i, col);
+      }
+      jMesh.instanceMatrix.needsUpdate = true;
+      if (jMesh.instanceColor) jMesh.instanceColor.needsUpdate = true;
+      group.add(jMesh);
+    }
+
+    if (bollardTransforms.length > 0) {
+      const bMesh = new THREE.InstancedMesh(bollardGeo, bollardMat, bollardTransforms.length);
+      for (let i = 0; i < bollardTransforms.length; i++) {
+        bMesh.setMatrixAt(i, bollardTransforms[i]);
+      }
+      bMesh.instanceMatrix.needsUpdate = true;
+      group.add(bMesh);
+    }
+  }
+
+  /**
+   * 4. La Vie, les Bâtiments, Belvédères, Camping-Cars, Tentes, Panneaux & Lampadaires :
+   *  - Paddock et Stands de course le long de la Grande Ligne Droite (z = 220, Y = 0)
+   *  - Lampadaires lumineux le long de la Grande Ligne Droite
+   *  - Petites plates-formes de spectateurs sécurisées (Belvédères) à flanc de montagne
+   *  - Cabanes de commissaires de course, tentes et camping-cars de spectateurs
+   *  - Panneaux de signalisation ("VIRAGE DANGEREUX", "TUNNEL 126M", flèches réfléchissantes)
+   */
+  _buildGrottoLifeAndBuildings() {
+    const L = this.layout;
+    const bd = L.barrierDistance;
+    const group = new THREE.Group();
+    group.name = 'grottoLifeAndBuildings';
+    this.root.add(group);
+
+    // a) Grand complexe Paddock & Stands de course le long de la Grande Ligne Droite (z = 220, côté Sud z = 242)
+    const pitWallMat = new THREE.MeshLambertMaterial({ color: 0xe8edf2 });
+    const pitDarkMat = new THREE.MeshLambertMaterial({ color: 0x26303c });
+    const pitGlassMat = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, roughness: 0.15, metalness: 0.75 });
+    const pitAccentMat = new THREE.MeshBasicMaterial({ color: 0xff6d00 });
+
+    const paddockGrp = new THREE.Group();
+    paddockGrp.position.set(35, 0, 220 + bd + 9.5);
+    group.add(paddockGrp);
+
+    const mainPitBox = new THREE.Mesh(new THREE.BoxGeometry(92, 5.2, 11.0), pitWallMat);
+    mainPitBox.position.y = 2.6;
+    const upperLounges = new THREE.Mesh(new THREE.BoxGeometry(86, 3.6, 9.2), pitDarkMat);
+    upperLounges.position.set(0, 7.0, 0.4);
+    const glassStrip = new THREE.Mesh(new THREE.BoxGeometry(84, 2.2, 0.3), pitGlassMat);
+    glassStrip.position.set(0, 7.0, -4.1);
+    const roofOverhang = new THREE.Mesh(new THREE.BoxGeometry(96, 0.55, 13.5), pitDarkMat);
+    roofOverhang.position.set(0, 9.0, -0.5);
+    const accentStripe = new THREE.Mesh(new THREE.BoxGeometry(96.2, 0.32, 13.6), pitAccentMat);
+    accentStripe.position.set(0, 9.15, -0.5);
+    paddockGrp.add(mainPitBox, upperLounges, glassStrip, roofOverhang, accentStripe);
+
+    // Portes de garages des stands (8 boxes) + Tour de contrôle
+    const bayDoorGeo = new THREE.BoxGeometry(7.2, 3.6, 0.25);
+    for (let b = -3.5; b <= 3.5; b += 1.0) {
+      const door = new THREE.Mesh(bayDoorGeo, pitDarkMat);
+      door.position.set(b * 10.5, 1.8, -5.45);
+      paddockGrp.add(door);
+    }
+    const towerShaft = new THREE.Mesh(new THREE.BoxGeometry(7.5, 18.0, 7.5), pitDarkMat);
+    towerShaft.position.set(-52, 9.0, 0);
+    const towerCab = new THREE.Mesh(new THREE.BoxGeometry(10.5, 4.2, 10.5), pitGlassMat);
+    towerCab.position.set(-52, 19.5, 0);
+    const towerRoof = new THREE.Mesh(new THREE.BoxGeometry(11.8, 0.8, 11.8), pitWallMat);
+    towerRoof.position.set(-52, 21.8, 0);
+    paddockGrp.add(towerShaft, towerCab, towerRoof);
+
+    // b) Poteaux lumineux (lampadaires) le long de la Grande Ligne Droite (x de -95 à +165)
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0x454d57 });
+    const lampBulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
+    const poleShaftGeo = new THREE.CylinderGeometry(0.14, 0.20, 9.5, 6);
+    poleShaftGeo.translate(0, 4.75, 0);
+    const poleArmGeo = new THREE.BoxGeometry(0.22, 0.22, 2.8);
+    const lampHeadGeo = new THREE.BoxGeometry(0.95, 0.22, 0.55);
+
+    for (let lx = -90; lx <= 162; lx += 28) {
+      for (const side of [-1, 1]) {
+        const lampGrp = new THREE.Group();
+        lampGrp.position.set(lx, 0, 220 + side * (bd + 1.2));
+        const shaft = new THREE.Mesh(poleShaftGeo, poleMat);
+        const arm = new THREE.Mesh(poleArmGeo, poleMat);
+        arm.position.set(0, 9.3, -side * 1.2);
+        const bulb = new THREE.Mesh(lampHeadGeo, lampBulbMat);
+        bulb.position.set(0, 9.15, -side * 2.3);
+        lampGrp.add(shaft, arm, bulb);
+        group.add(lampGrp);
+      }
+    }
+
+    // c) Belvédères sécurisés à flanc de montagne (plates-formes de spectateurs avec vue plongeante)
+    const woodMat = new THREE.MeshLambertMaterial({ color: 0x6d4c41 });
+    const railMat = new THREE.MeshLambertMaterial({ color: 0xb0bec5 });
+    const belvedereRatios = [
+      [0.21, 1],  // Épingle 1 en montée
+      [0.31, -1], // Épingle 2 panoramique
+      [0.44, 1],  // Sommet de la crête rocheuse (Y = 35.5m)
+      [0.58, -1], // Grande descente Nord-Ouest
+    ];
+    const specGeo = mergeGeometries([
+      new THREE.BoxGeometry(0.42, 0.58, 0.26).translate(0, 0.29, 0),
+      new THREE.BoxGeometry(0.26, 0.26, 0.26).translate(0, 0.74, 0),
+    ]);
+    const palette = [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047, 0xfb8c00, 0x00acc1];
+
+    for (const [ratio, side] of belvedereRatios) {
+      const idx = Math.floor(L.count * ratio) % L.count;
+      const p = L.points[idx], r = L.rights[idx];
+      const bx = p.x + r.x * side * (bd + 5.2);
+      const bz = p.z + r.z * side * (bd + 5.2);
+      const by = p.y + 0.35;
+      const yaw = Math.atan2(-r.x * side, -r.z * side);
+
+      const belv = new THREE.Group();
+      belv.position.set(bx, by, bz);
+      belv.rotation.y = yaw;
+      group.add(belv);
+
+      // Plate-forme bois + piliers d'ancrage dans la falaise + garde-corps métalliques sécurisés
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.45, 5.2), woodMat);
+      const stilts = new THREE.Mesh(new THREE.BoxGeometry(10.2, 12.0, 4.4), new THREE.MeshLambertMaterial({ color: 0x4a5058 }));
+      stilts.position.y = -6.2;
+      const frontRail = new THREE.Mesh(new THREE.BoxGeometry(11.0, 1.1, 0.14), railMat);
+      frontRail.position.set(0, 0.75, 2.5);
+      const backRail = new THREE.Mesh(new THREE.BoxGeometry(11.0, 1.1, 0.14), railMat);
+      backRail.position.set(0, 0.75, -2.5);
+      belv.add(deck, stilts, frontRail, backRail);
+
+      // Spectateurs sur le belvédère encourageant les pilotes
+      for (let s = -4.2; s <= 4.2; s += 1.2) {
+        const sp = new THREE.Mesh(specGeo, new THREE.MeshLambertMaterial({ color: palette[Math.abs(Math.round(s * 3)) % palette.length] }));
+        sp.position.set(s, 0.25, 1.4);
+        belv.add(sp);
+      }
+    }
+
+    // d) Cabanes de commissaires de course, Tentes & Camping-Cars dans les zones herbeuses
+    const camperBodyMat = new THREE.MeshLambertMaterial({ color: 0xf5f7fa });
+    const camperStripeMat = new THREE.MeshLambertMaterial({ color: 0x1e88e5 });
+    const tentColors = [0xff7043, 0x26a69a, 0xffca28, 0x5c6bc0];
+    const campSpots = [
+      [-155, 0.0, 152, 0.4],
+      [-175, 0.0, 132, 0.9],
+      [155, 0.0, 185, -0.6],
+      [-85, 0.5, -165, 1.2],
+    ];
+
+    for (let c = 0; c < campSpots.length; c++) {
+      const [cx, , cz, rotY] = campSpots[c];
+      if (L.distanceToCenterline(cx, cz) < bd + 6.5) continue;
+      const cy = this.getTerrainHeight(cx, cz);
+
+      // Camping-Car (Camper Van 3D)
+      const camper = new THREE.Group();
+      camper.position.set(cx, cy, cz);
+      camper.rotation.y = rotY;
+      const vanBox = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.6, 6.4), camperBodyMat);
+      vanBox.position.y = 1.5;
+      const vanAlcove = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 2.2), camperBodyMat);
+      vanAlcove.position.set(0, 2.75, 2.2);
+      const vanStripe = new THREE.Mesh(new THREE.BoxGeometry(2.54, 0.35, 6.42), camperStripeMat);
+      vanStripe.position.y = 1.4;
+      const vanWindshield = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.85, 0.2), pitGlassMat);
+      vanWindshield.position.set(0, 1.85, 3.15);
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.10, 4.4), new THREE.MeshLambertMaterial({ color: tentColors[c % tentColors.length] }));
+      awning.position.set(2.1, 2.55, -0.2);
+      camper.add(vanBox, vanAlcove, vanStripe, vanWindshield, awning);
+      group.add(camper);
+
+      // Tente dôme à proximité du camping-car
+      const tentGeo = new THREE.ConeGeometry(2.2, 1.9, 5);
+      tentGeo.translate(0, 0.95, 0);
+      const tent = new THREE.Mesh(tentGeo, new THREE.MeshLambertMaterial({ color: tentColors[(c + 1) % tentColors.length], flatShading: true }));
+      tent.position.set(cx + 5.5, cy, cz + 2.5);
+      group.add(tent);
+    }
+
+    // Cabanes de commissaires de course (Marshal Huts) aux points stratégiques
+    for (const mRatio of [0.12, 0.38, 0.68, 0.88]) {
+      const idx = Math.floor(L.count * mRatio) % L.count;
+      const p = L.points[idx], r = L.rights[idx], t = L.tangents[idx];
+      const mx = p.x - r.x * (bd + 2.8);
+      const mz = p.z - r.z * (bd + 2.8);
+      if (this._isGrottoExcludedZone(mx, mz)) continue;
+      const hut = new THREE.Group();
+      hut.position.set(mx, p.y, mz);
+      hut.rotation.y = Math.atan2(t.x, t.z);
+      const hutBody = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.5, 2.4), pitWallMat);
+      hutBody.position.y = 1.25;
+      const hutRoof = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.30, 2.8), pitAccentMat);
+      hutRoof.position.y = 2.65;
+      hut.add(hutBody, hutRoof);
+      group.add(hut);
+    }
+
+    // e) Panneaux de signalisation "VIRAGE DANGEREUX" et "TUNNEL"
+    const warnSigns = [
+      [0.14, 1, 'VIRAGE DANGEREUX', '#b71c1c', '#ffffff', '#ffeb3b'],
+      [0.24, -1, 'LACETS SERRÉS', '#e65100', '#ffffff', '#ffeb3b'],
+      [0.40, 1, 'CRÊTE · +35M', '#0d47a1', '#ffffff', '#00e5ff'],
+      [0.69, 1, 'ATTENTION TUNNEL', '#1b222c', '#ffca28', '#ff6d00'],
+      [0.83, -1, 'VIADUC DU CANYON', '#1b5e20', '#ffffff', '#ffca28'],
+    ];
+    const signBoardGeo = new THREE.BoxGeometry(4.6, 1.45, 0.16);
+    const signLegGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.4, 5);
+    signLegGeo.translate(0, 1.2, 0);
+
+    for (const [ratio, side, label, bg, fg, acc] of warnSigns) {
+      const idx = Math.floor(L.count * ratio) % L.count;
+      const p = L.points[idx], r = L.rights[idx], t = L.tangents[idx];
+      const sx = p.x + r.x * side * (bd + 2.1);
+      const sz = p.z + r.z * side * (bd + 2.1);
+      const sGrp = new THREE.Group();
+      sGrp.position.set(sx, p.y, sz);
+      sGrp.rotation.y = Math.atan2(-t.x, -t.z);
+      const board = new THREE.Mesh(
+        signBoardGeo,
+        new THREE.MeshBasicMaterial({ map: billboardTexture(label, bg, fg, acc) })
+      );
+      board.position.y = 2.2;
+      const l1 = new THREE.Mesh(signLegGeo, poleMat); l1.position.x = -1.6;
+      const l2 = new THREE.Mesh(signLegGeo, poleMat); l2.position.x = 1.6;
+      sGrp.add(board, l1, l2);
+      group.add(sGrp);
+    }
+  }
+
+  /**
+   * 5. Forêt Alpine Dense, Touffes d'Herbe & Buissons (Optimisés via THREE.InstancedMesh) :
+   *  - Des centaines de sapins alpins et pins répartis sur les flancs de montagne et au bord du tracé
+   *  - Touffes d'herbe et buissons éparpillés le long de la piste
+   */
+  _buildGrottoAlpineVegetation() {
+    const L = this.layout;
+    const bd = L.barrierDistance;
+    const rnd = seededRandom(909);
+
+    const firTransforms = [];
+    const firColors = [];
+    const grassBushTransforms = [];
+    const grassBushColors = [];
+
+    const m4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+
+    // Bosquets alpins denses sur les reliefs Est, Ouest et Nord + bordures de piste
+    const alpineZones = [
+      [150, 110, 62, 55],
+      [210, -25, 68, 60],
+      [-150, -125, 72, 65],
+      [-135, 95, 64, 52],
+      [115, -145, 58, 48],
+    ];
+
+    for (const [cx, cz, rad, count] of alpineZones) {
+      for (let k = 0; k < count; k++) {
+        const ang = rnd() * Math.PI * 2;
+        const dist = Math.sqrt(rnd()) * rad;
+        const x = cx + Math.cos(ang) * dist;
+        const z = cz + Math.sin(ang) * dist;
+        if (L.distanceToCenterline(x, z) < bd + 3.2) continue;
+        if (this._isGrottoExcludedZone(x, z)) continue;
+
+        const y = this.getTerrainHeight(x, z) - 0.15;
+        const s = 0.90 + rnd() * 0.85;
+        pos.set(x, y, z);
+        quat.setFromEuler(new THREE.Euler(0, rnd() * Math.PI * 2, 0));
+        scl.setScalar(s);
+        m4.compose(pos, quat, scl);
+        firTransforms.push(m4.clone());
+        // Sapins plus clairs/enneigés en haute altitude (y > 24m)
+        firColors.push(y > 24 ? 0x607d6b : (rnd() > 0.5 ? 0x1e4628 : 0x275432));
+      }
+    }
+
+    // Touffes d'herbe et buissons alpins tout le long des accotements (hors tunnel et pont)
+    for (let i = 0; i < L.count; i += 2) {
+      const p = L.points[i], r = L.rights[i];
+      for (const side of [-1, 1]) {
+        if (rnd() < 0.35) continue;
+        const offset = bd + 1.2 + rnd() * 5.5;
+        const bx = p.x + r.x * side * offset;
+        const bz = p.z + r.z * side * offset;
+        if (this._isGrottoExcludedZone(bx, bz)) continue;
+        if (L.distanceToCenterline(bx, bz) < bd + 1.0) continue;
+
+        const by = p.y - 0.08;
+        const bs = 0.65 + rnd() * 0.90;
+        pos.set(bx, by, bz);
+        quat.setFromEuler(new THREE.Euler(0, rnd() * Math.PI * 2, 0));
+        scl.set(bs * 1.1, bs * 0.75, bs * 1.1);
+        m4.compose(pos, quat, scl);
+        grassBushTransforms.push(m4.clone());
+        grassBushColors.push(rnd() > 0.4 ? 0x3b6e38 : 0x4e7d3e);
+      }
+    }
+
+    // InstancedMesh des sapins alpins à 3 étages coniques
+    if (firTransforms.length > 0) {
+      const fTrunk = new THREE.CylinderGeometry(0.20, 0.34, 2.4, 5).translate(0, 1.2, 0);
+      const fCone1 = new THREE.ConeGeometry(1.9, 2.8, 5).translate(0, 3.0, 0);
+      const fCone2 = new THREE.ConeGeometry(1.45, 2.5, 5).translate(0, 4.5, 0);
+      const fCone3 = new THREE.ConeGeometry(0.95, 2.1, 5).translate(0, 5.8, 0);
+      const firCrownGeo = mergeGeometries([fCone1, fCone2, fCone3]);
+
+      const trunkMesh = new THREE.InstancedMesh(fTrunk, new THREE.MeshLambertMaterial({ color: 0x4e342e }), firTransforms.length);
+      const crownMesh = new THREE.InstancedMesh(firCrownGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), firTransforms.length);
+      const col = new THREE.Color();
+
+      for (let i = 0; i < firTransforms.length; i++) {
+        trunkMesh.setMatrixAt(i, firTransforms[i]);
+        crownMesh.setMatrixAt(i, firTransforms[i]);
+        col.setHex(firColors[i]);
+        crownMesh.setColorAt(i, col);
+      }
+      trunkMesh.instanceMatrix.needsUpdate = true;
+      crownMesh.instanceMatrix.needsUpdate = true;
+      if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
+      this.root.add(trunkMesh, crownMesh);
+    }
+
+    // InstancedMesh des buissons et touffes d'herbe
+    if (grassBushTransforms.length > 0) {
+      const gb1 = new THREE.DodecahedronGeometry(0.82, 0).translate(0, 0.42, 0);
+      const gb2 = new THREE.DodecahedronGeometry(0.58, 0).translate(0.45, 0.32, 0.20);
+      const gbGeo = mergeGeometries([gb1, gb2]);
+      const gbMesh = new THREE.InstancedMesh(gbGeo, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), grassBushTransforms.length);
+      const col = new THREE.Color();
+
+      for (let i = 0; i < grassBushTransforms.length; i++) {
+        gbMesh.setMatrixAt(i, grassBushTransforms[i]);
+        col.setHex(grassBushColors[i]);
+        gbMesh.setColorAt(i, col);
+      }
+      gbMesh.instanceMatrix.needsUpdate = true;
+      if (gbMesh.instanceColor) gbMesh.instanceColor.needsUpdate = true;
+      this.root.add(gbMesh);
+    }
+  }
+
   _buildCurbs() {
     const L = this.layout;
     const n = L.count;
@@ -1719,6 +2551,7 @@ export class TrackBuilder {
         z = p.z + r.z * sideNow * (bd + 5.5);
         if (L.distanceToCenterline(x, z) < bd + 3.8) return;
       }
+      if (this._isGrottoExcludedZone(x, z)) return;
       const [text, bg, fg, acc] = sponsors[k % sponsors.length];
 
       const group = new THREE.Group();
@@ -1791,6 +2624,7 @@ export class TrackBuilder {
         const gx = p.x + r.x * side * dist;
         const gz = p.z + r.z * side * dist;
         if (L.distanceToCenterline(gx, gz) < bd + 6.0) continue;
+        if (this._isGrottoExcludedZone(gx, gz)) continue;
         if (L.circuitId === 'lake' && (((gx - 71) * (gx - 71)) / (155 * 155) + ((gz + 365) * (gz + 365)) / (90 * 90) < 1.0)) continue;
         const gy = this.getTerrainHeight(gx, gz);
         const lookDirX = -r.x * side, lookDirZ = -r.z * side;
@@ -1831,6 +2665,7 @@ export class TrackBuilder {
       for (const side of sides) {
         const cx = p.x + r.x * side * (bd + 2.4);
         const cz = p.z + r.z * side * (bd + 2.4);
+        if (this._isGrottoExcludedZone(cx, cz)) continue;
         if (L.circuitId === 'lake' && (((cx - 71) * (cx - 71)) / (152 * 152) + ((cz + 365) * (cz + 365)) / (88 * 88) < 1.0)) continue;
         const yaw = Math.atan2(r.x * side, r.z * side);
         qRot.setFromEuler(new THREE.Euler(0, yaw + Math.PI, 0));
@@ -1909,6 +2744,7 @@ export class TrackBuilder {
         const x = p.x + r.x * side * dist;
         const z = p.z + r.z * side * dist;
         if (L.distanceToCenterline(x, z) < minTrackDist) continue;
+        if (this._isGrottoExcludedZone(x, z)) continue;
         if (L.circuitId === 'lake' && (((x - 71) * (x - 71)) / (152 * 152) + ((z + 365) * (z + 365)) / (88 * 88) < 1.0)) continue;
         let inStand = false;
         for (const g of this.grandstandBoxes) {
@@ -1932,6 +2768,7 @@ export class TrackBuilder {
       const z = (b.min.z - 45) + rnd() * (b.max.z - b.min.z + 90);
       const dCenter = L.distanceToCenterline(x, z);
       if (dCenter < minTrackDist + 6 || dCenter > 65) continue;
+      if (this._isGrottoExcludedZone(x, z)) continue;
       if (L.circuitId === 'lake' && (((x - 71) * (x - 71)) / (155 * 155) + ((z + 365) * (z + 365)) / (90 * 90) < 1.0)) continue;
       let inStand = false;
       for (const g of this.grandstandBoxes) {

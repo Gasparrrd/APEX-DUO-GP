@@ -179,50 +179,79 @@ export const CONFIG = {
 };
 
 /**
- * 2. Modificateurs propres à chaque silhouette de véhicule :
- *  - Supercar  : Vitesse +15%, Accélération 1.0x, Grip +10%
- *  - Muscle GT : Vitesse 1.0x, Accélération +20%, Grip -10% (guidage amélioré en virage)
- *  - Monoplace : Vitesse -10%, Accélération +10%, Grip +25% (freinage tardif, rail)
+ * 2. Modificateurs propres à chaque silhouette de véhicule (échelle harmonisée autour de 1.00 = 0%) :
+ *  - Chaque paramètre (topSpeed, acceleration, grip, braking) utilise le même poids linéaire (1.00 = base, 1.15 = +15%, 0.85 = -15%).
+ *  - Toute modification ici ou dans CONFIG.car est automatiquement répercutée dans les jauges en % du salon et dans la physique en jeu.
  */
 export const VEHICLE_MODIFIERS = {
   supercar: {
     label: 'Supercar',               // Nom affiché
-    topSpeed: 1.15,                  // Vitesse max de base en m/s
-    acceleration: 1.00,              // Multiplicateur d'accélération
-    grip: 1.10,                      // Adhérence / facilité à tourner
-    braking: 1.05,                   // Multiplicateur de freinage
-    description: 'Vitesse +15% · Accél. Neutre · Grip +10%', // Texte affiché dans le garage
+    topSpeed: 1.15,                  // Multiplicateur de vitesse de pointe (+15%)
+    acceleration: 1.00,              // Multiplicateur d'accélération (0%)
+    grip: 1.10,                      // Multiplicateur d'adhérence / tenue de route (+10%)
+    braking: 1.05,                   // Multiplicateur de freinage (+5%)
+    get description() {
+      return formatVehicleDescription(this);
+    },
   },
   muscle: {
     label: 'Muscle Car',             // Nom affiché
-    topSpeed: 1.05,                  // Vitesse max de base en m/s
-    acceleration: 1.30,              // Multiplicateur d'accélération
-    grip: 0.95,                      // Adhérence / facilité à tourner
-    braking: 0.95,                   // Multiplicateur de freinage
-    description: 'Vitesse Neutre · Couple +20% · Grip -10%', // Texte affiché dans le garage
+    topSpeed: 1.05,                  // Multiplicateur de vitesse de pointe (+5%)
+    acceleration: 1.30,              // Multiplicateur d'accélération (+30%)
+    grip: 0.95,                      // Multiplicateur d'adhérence / tenue de route (-5%)
+    braking: 0.95,                   // Multiplicateur de freinage (-5%)
+    get description() {
+      return formatVehicleDescription(this);
+    },
   },
   formula: {
     label: 'Monoplace',              // Nom affiché
-    topSpeed: 0.85,                  // Vitesse max de base en m/s
-    acceleration: 1.10,              // Multiplicateur d'accélération
-    grip: 1.25,                      // Adhérence / facilité à tourner
-    braking: 1.22,                   // Multiplicateur de freinage
-    description: 'Vitesse -10% · Accél. +10% · Grip +25% (Appui max)', // Texte affiché dans le garage
+    topSpeed: 0.85,                  // Multiplicateur de vitesse de pointe (-15%)
+    acceleration: 1.10,              // Multiplicateur d'accélération (+10%)
+    grip: 1.25,                      // Multiplicateur d'adhérence / tenue de route (+25%)
+    braking: 1.22,                   // Multiplicateur de freinage (+22%)
+    get description() {
+      return formatVehicleDescription(this);
+    },
   },
 };
 
 /**
- * 3. Conditions météorologiques dynamiques :
- *  - Ensoleillé (sunny) : Grip 1.0x, vent nul, ciel dégagé
- *  - Pluvieux (rain)    : Grip 0.75x, brouillard gris, pluie animée
- *  - Tempête (storm)    : Grip 0.85x, vecteur de vent latéral/frontal fort, vitesse réduite face au vent
+ * Valeurs de référence (échelle 1.00 = 100%) de CONFIG.car permettant de refléter
+ * toute modification de CONFIG.car ou de VEHICLE_MODIFIERS avec un poids équivalent.
+ */
+export const CAR_REFERENCE_BASELINE = {
+  topSpeed: 80,
+  enginePower: 250000,
+  maxEngineForce: 7400,
+  frictionFront: 3.25,
+  frictionRear: 3.45,
+  lateralGripDamping: 8.0,
+  brakeImpulse: 45,
+};
+
+function formatStatPct(mult) {
+  const diff = Math.round((mult - 1) * 100);
+  return diff >= 0 ? `+${diff}%` : `${diff}%`;
+}
+
+function formatVehicleDescription(mod) {
+  if (!mod) return '';
+  return `Vitesse ${formatStatPct(mod.topSpeed)} · Accél. ${formatStatPct(mod.acceleration)} · Grip ${formatStatPct(mod.grip)}`;
+}
+
+/**
+ * 3. Conditions météorologiques dynamiques (échelle harmonisée autour de 1.00) :
+ *  - Ensoleillé (sunny) : Grip 1.00x, slideRate 0.55, vent nul, ciel dégagé
+ *  - Pluvieux (rain)    : Grip 1.00x, slideRate 1.05, brouillard gris, pluie animée
+ *  - Tempête (storm)    : Grip 0.90x, slideRate 0.80, vecteur de vent latéral/frontal fort
  */
 export const WEATHER_MODIFIERS = {
   sunny: {
     label: 'Ensoleillé (Sec)',       // Nom affiché
-    topSpeed: 1.00,                  // Vitesse max de base en m/s
-    acceleration: 1.00,              // Multiplicateur d'accélération
-    grip: 1.0,                       // Adhérence / facilité à tourner
+    topSpeed: 1.00,                  // Multiplicateur de vitesse max (1.00 = 100%)
+    acceleration: 1.00,              // Multiplicateur d'accélération (1.00 = 100%)
+    grip: 1.00,                      // Multiplicateur d'adhérence / facilité à tourner
     slideRate: 0.55,                 // TAUX DE GLISSADE sur sol sec (glisse continue proportionnelle à la vitesse et au braquage)
     windForce: [0, 0, 0],            // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.00,            // Multiplicateur de résistance de l'air
@@ -236,9 +265,9 @@ export const WEATHER_MODIFIERS = {
   },
   rain: {
     label: 'Pluvieux',               // Nom affiché
-    topSpeed: 0.97,                  // Vitesse max de base en m/s
-    acceleration: 0.95,              // Multiplicateur d'accélération
-    grip: 1.0,                       // Adhérence / facilité à tourner
+    topSpeed: 0.97,                  // Multiplicateur de vitesse max (-3%)
+    acceleration: 0.95,              // Multiplicateur d'accélération (-5%)
+    grip: 1.00,                      // Multiplicateur d'adhérence / facilité à tourner
     slideRate: 1.05,                 // TAUX DE GLISSADE sous la pluie (+90% de glisse par rapport au sec)
     windForce: [220, 0, -160],       // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.04,            // Multiplicateur de résistance de l'air
@@ -254,9 +283,9 @@ export const WEATHER_MODIFIERS = {
   },
   storm: {
     label: 'Tempête / Venteux',      // Nom affiché
-    topSpeed: 0.94,                  // Vitesse max de base en m/s
-    acceleration: 0.96,              // Multiplicateur d'accélération
-    grip: 0.90,                      // Adhérence / facilité à tourner
+    topSpeed: 0.94,                  // Multiplicateur de vitesse max (-6%)
+    acceleration: 0.96,              // Multiplicateur d'accélération (-4%)
+    grip: 0.90,                      // Multiplicateur d'adhérence / facilité à tourner (-10%)
     slideRate: 0.80,                 // TAUX DE GLISSADE sous tempête (+45% de glisse par rapport au sec)
     windForce: [1200, 0, -900],      // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.09,            // Multiplicateur de résistance de l'air
@@ -273,27 +302,75 @@ export const WEATHER_MODIFIERS = {
 };
 
 /**
- * Formule modulaire de calcul des statistiques d'un véhicule en temps réel :
+ * Formule modulaire et harmonisée de calcul des statistiques d'un véhicule en temps réel :
  *   Stat_Finale = Paramètre_Global * Modificateur_Véhicule * Modificateur_Météo (* Adhérence_Générale)
+ * Tous les multiplicateurs (topSpeed, acceleration, grip, braking) agissent avec une échelle et un poids 1:1 équivalents.
  * Écrit dans `out` s'il est fourni afin d'éviter toute allocation GC dans la boucle physique 60 Hz.
  */
-export function computeVehicleStats(bodyType = 'supercar', weatherKey = 'sunny', _unusedGrip = 1.0, out = null) {
+export function computeVehicleStats(bodyType = 'supercar', weatherKey = 'sunny', globalGrip = 1.0, out = null) {
   const base = CONFIG.car;
+  const ref = CAR_REFERENCE_BASELINE;
   const vMod = VEHICLE_MODIFIERS[bodyType] || VEHICLE_MODIFIERS.supercar;
   const wMod = WEATHER_MODIFIERS[weatherKey] || WEATHER_MODIFIERS.sunny;
+  const gGrip = (globalGrip !== undefined && globalGrip !== null) ? Number(globalGrip) : (CONFIG.race.globalGrip ?? 1.0);
   const target = (out && typeof out === 'object') ? out : {};
 
-  target.topSpeed = base.topSpeed * vMod.topSpeed * wMod.topSpeed;
-  target.enginePower = base.enginePower * vMod.acceleration * wMod.acceleration;
-  target.maxEngineForce = base.maxEngineForce * vMod.acceleration * wMod.acceleration;
-  target.frictionFront = base.frictionFront * vMod.grip * wMod.grip;
-  target.frictionRear = base.frictionRear * vMod.grip * wMod.grip;
-  target.lateralGripDamping = base.lateralGripDamping * vMod.grip * wMod.grip;
-  target.brakeImpulse = base.brakeImpulse * vMod.braking * Math.sqrt(wMod.grip);
+  // Échelles normalisées (poids 1:1 entre config globale, véhicule et météo)
+  const baseSpeedScale = base.topSpeed / ref.topSpeed;
+  const baseAccelScale = 0.5 * (base.enginePower / ref.enginePower) + 0.5 * (base.maxEngineForce / ref.maxEngineForce);
+  const baseGripScale = (
+    (base.frictionFront / ref.frictionFront) +
+    (base.frictionRear / ref.frictionRear) +
+    (base.lateralGripDamping / ref.lateralGripDamping)
+  ) / 3.0;
+  const baseBrakeScale = base.brakeImpulse / ref.brakeImpulse;
+
+  const speedMultiplier = baseSpeedScale * vMod.topSpeed * wMod.topSpeed;
+  const accelMultiplier = baseAccelScale * vMod.acceleration * wMod.acceleration;
+  const gripMultiplier = baseGripScale * vMod.grip * wMod.grip * gGrip;
+  const brakeMultiplier = baseBrakeScale * (vMod.braking ?? vMod.grip) * Math.sqrt(wMod.grip);
+
+  target.speedMultiplier = speedMultiplier;
+  target.accelMultiplier = accelMultiplier;
+  target.gripMultiplier = gripMultiplier;
+  target.vehicleGrip = baseGripScale * vMod.grip;
+
+  target.topSpeed = ref.topSpeed * speedMultiplier;
+  target.enginePower = ref.enginePower * accelMultiplier;
+  target.maxEngineForce = ref.maxEngineForce * accelMultiplier;
+  target.frictionFront = ref.frictionFront * gripMultiplier;
+  target.frictionRear = ref.frictionRear * gripMultiplier;
+  target.lateralGripDamping = ref.lateralGripDamping * gripMultiplier;
+  target.brakeImpulse = ref.brakeImpulse * brakeMultiplier;
   target.dragCoef = base.dragCoef * wMod.dragMultiplier;
   target.windForce = wMod.windForce;
   target.slideRate = (wMod.slideRate !== undefined) ? wMod.slideRate : (base.slideRate || 0.55);
   return target;
+}
+
+/**
+ * Calcule dynamiquement les statistiques affichées dans l'interface du salon (en %)
+ * directement à partir de `computeVehicleStats` pour garantir une correspondance 100% exacte
+ * entre `config.js`, l'interface du salon et la physique en jeu.
+ */
+export function getVehicleDisplayStats(bodyType = 'supercar') {
+  const stats = computeVehicleStats(bodyType, 'sunny', CONFIG.race.globalGrip ?? 1.0);
+  const toBarWidth = (mult) => {
+    const pct = Math.round(60 + (mult - 1.0) * 120);
+    return `${Math.max(8, Math.min(100, pct))}%`;
+  };
+
+  return {
+    speedMult: stats.speedMultiplier,
+    accelMult: stats.accelMultiplier,
+    gripMult: stats.gripMultiplier,
+    speedText: formatStatPct(stats.speedMultiplier),
+    accelText: formatStatPct(stats.accelMultiplier),
+    gripText: formatStatPct(stats.gripMultiplier),
+    speedBarWidth: toBarWidth(stats.speedMultiplier),
+    accelBarWidth: toBarWidth(stats.accelMultiplier),
+    gripBarWidth: toBarWidth(stats.gripMultiplier),
+  };
 }
 
 /**

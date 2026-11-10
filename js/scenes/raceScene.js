@@ -13,18 +13,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=32';
-import { TrackLayout } from '../track/trackLayout.js?v=32';
-import { TrackBuilder } from '../track/trackBuilder.js?v=32';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=32';
-import { Vehicle } from '../physics/vehicle.js?v=32';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=32';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=32';
-import { ParticleSystem } from '../gfx/particles.js?v=32';
-import { WeatherSystem } from '../gfx/weather.js?v=32';
-import { soundManager } from '../core/audio.js?v=32';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=32';
-import { clamp } from '../core/utils.js?v=32';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=33';
+import { TrackLayout } from '../track/trackLayout.js?v=33';
+import { TrackBuilder } from '../track/trackBuilder.js?v=33';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=33';
+import { Vehicle } from '../physics/vehicle.js?v=33';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=33';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=33';
+import { ParticleSystem } from '../gfx/particles.js?v=33';
+import { WeatherSystem } from '../gfx/weather.js?v=33';
+import { soundManager } from '../core/audio.js?v=33';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=33';
+import { clamp } from '../core/utils.js?v=33';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();
@@ -273,7 +273,7 @@ export class RaceScene {
 
     let circuitId = raceSettings.circuit || CONFIG.race.circuit || 'flat';
     if (circuitId === 'random') {
-      const circuits = ['flat', 'mountain', 'valley', 'lake'];
+      const circuits = ['flat', 'mountain', 'valley', 'lake', 'grotto'];
       circuitId = circuits[Math.floor(Math.random() * circuits.length)];
     }
     this._ensureCircuit(circuitId);
@@ -547,8 +547,10 @@ export class RaceScene {
         continue;
       }
 
-      // Badge positionné à 1.0 m au-dessus du centre de carrosserie pour ne pas masquer les virages
-      _tagWorldPos.set(pos.x, pos.y + 1.0, pos.z);
+      // Pseudo abaissé légèrement au-dessus du toit (0.72 m pour le joueur, toit à ~0.56 m)
+      // afin de dégager la vue vers l'avant sans toucher la carrosserie de la voiture
+      const tagHeightOffset = v.isAI ? 0.84 : 0.72;
+      _tagWorldPos.set(pos.x, pos.y + tagHeightOffset, pos.z);
       _tagWorldPos.project(camera);
 
       if (_tagWorldPos.z < -1 || _tagWorldPos.z > 1) {

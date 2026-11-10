@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=32';
-import { clamp, wrap } from '../core/utils.js?v=32';
+import { CONFIG } from '../config.js?v=33';
+import { clamp, wrap } from '../core/utils.js?v=33';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [
@@ -96,6 +96,36 @@ export const TRACK_POINTS_LAKE = [
   [-180, 5.0, -218], [-110, 8.0, -152],
 ];
 
+/**
+ * Circuit 5 : "Le Col de la Grotte" (Mountain Pass & Under-tunnel) — Tracé alpin spectaculaire [x, y, z] :
+ *  1. Grande Ligne Droite (Départ/Arrivée) au niveau du sol (Y = 0) longeant le canyon Sud (z = 220)
+ *  2. Ascension & Épingles de la Montagne Est (lacets serrés et chicanes à flanc de falaise, Y grimpe jusqu'à +35.5m)
+ *  3. Piste Supérieure sur la crête rocheuse sommitale (Y = 35.5m, z = -35) avec glissières doublées et vue plongeante
+ *  4. Grande descente rapide sur le versant Nord-Ouest plongeant vers l'entrée Nord du tunnel (Y -> 0.5m)
+ *  5. Piste Inférieure & Long Tunnel Rocheux (x = 0, z de -100 à +25, Y = 0.5m) passant 35m EN DESSOUS de la crête sommitale
+ *  6. Grand Pont / Viaduc à arches (x = 0, z de +55 à +135, Y = 4.2m) enjambant la rivière animée du canyon avant le retour départ
+ */
+export const TRACK_POINTS_GROTTO = [
+  // 1. Grande Ligne Droite (Départ / Arrivée au niveau du sol Y = 0, longeant le canyon Sud)
+  [-90, 0.0, 220], [-25, 0.0, 220], [40, 0.0, 220], [105, 0.0, 220], [168, 0.0, 220],
+  // 2. L'Ascension et les Épingles en Montagne (lacets serrés et chicanes à flanc de falaise, Y -> +35m)
+  [222, 2.5, 204], [256, 7.0, 158], [244, 12.0, 104],
+  [184, 16.0, 78], [174, 20.0, 32],                        // Épingle 1 & chicane de falaise
+  [236, 24.5, 4], [250, 29.0, -46], [204, 33.0, -84],      // Épingle 2 & rampe sommitale
+  [144, 34.8, -58],
+  // 3. La Piste Supérieure (Crête rocheuse au sommet à Y = 35.5m, passant au-dessus du tunnel en (0, -35))
+  [86, 35.4, -38], [42, 35.6, -35], [0, 35.6, -35], [-42, 35.6, -35], [-86, 35.2, -38],
+  // 4. Grande Descente Rapide Nord-Ouest (Y plonge de 35m à 0.5m)
+  [-146, 30.5, -56], [-196, 22.5, -96], [-206, 14.0, -156],
+  [-164, 7.0, -200], [-98, 2.5, -214], [-34, 0.8, -188], [0, 0.5, -142],
+  // 5. La Piste Inférieure & Le Tunnel Rocheux (x = 0, z de -100 à +25, Y = 0.5m, soit 35m SOUS la crête !)
+  [0, 0.5, -100], [0, 0.5, -68], [0, 0.5, -35], [0, 0.5, -4], [0, 0.5, 26],
+  // 6. Le Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +55 à +135, Y = 4.2m)
+  [0, 2.6, 56], [0, 4.2, 96], [0, 2.4, 136],
+  // 7. Courbe de raccordement Ouest vers la Grande Ligne Droite de départ (Y -> 0)
+  [-36, 0.6, 166], [-106, 0.2, 178], [-146, 0.0, 202],
+];
+
 export const CIRCUITS = {
   flat: {
     id: 'flat',
@@ -103,6 +133,7 @@ export const CIRCUITS = {
     points: TRACK_POINTS_FLAT,
     hasRelief: false,
     hasBridge: false,
+    hasTunnel: false,
   },
   mountain: {
     id: 'mountain',
@@ -110,6 +141,7 @@ export const CIRCUITS = {
     points: TRACK_POINTS_MOUNTAIN,
     hasRelief: true,
     hasBridge: false,
+    hasTunnel: false,
   },
   valley: {
     id: 'valley',
@@ -117,6 +149,7 @@ export const CIRCUITS = {
     points: TRACK_POINTS_VALLEY,
     hasRelief: true,
     hasBridge: true,
+    hasTunnel: false,
   },
   lake: {
     id: 'lake',
@@ -124,6 +157,15 @@ export const CIRCUITS = {
     points: TRACK_POINTS_LAKE,
     hasRelief: true,
     hasBridge: false,
+    hasTunnel: false,
+  },
+  grotto: {
+    id: 'grotto',
+    name: 'Circuit 5 — Le Col de la Grotte (Montagne & Tunnel)',
+    points: TRACK_POINTS_GROTTO,
+    hasRelief: true,
+    hasBridge: true,
+    hasTunnel: true,
   },
 };
 
@@ -133,6 +175,7 @@ export class TrackLayout {
     this.circuitId = circuit.id;
     this.hasRelief = circuit.hasRelief;
     this.hasBridge = Boolean(circuit.hasBridge);
+    this.hasTunnel = Boolean(circuit.hasTunnel);
 
     const cfg = CONFIG.track;
     this.halfWidth = cfg.halfWidth;
@@ -314,7 +357,7 @@ export class TrackLayout {
       for (let o = -window; o <= window; o++) {
         const i = (hint + o + n) % n, p = pts[i];
         const dy = hasY ? (p.y - y) : 0;
-        const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 4.5;
+        const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 7.5;
         if (d < bestD) { bestD = d; best = i; }
       }
       if (bestD < 32 * 32) return best;
@@ -322,10 +365,24 @@ export class TrackLayout {
     for (let i = 0; i < n; i++) {
       const p = pts[i];
       const dy = hasY ? (p.y - y) : 0;
-      const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 6.0;
+      const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 9.0;
       if (d < bestD) { bestD = d; best = i; }
     }
     return best;
+  }
+
+  /**
+   * Indique si la position 3D `(x, y, z)` se trouve à l'intérieur du tunnel rocheux (ou sous le viaduc).
+   * Permet d'activer l'effet sonore d'écho/réverbération dans le tunnel.
+   */
+  isInTunnel(x, y, z) {
+    if (this.circuitId === 'grotto') {
+      return Math.abs(x) <= 13.5 && z >= -104 && z <= 30 && y <= 10.5;
+    }
+    if (this.circuitId === 'valley') {
+      return Math.abs(x) <= 16.0 && Math.abs(z) <= 14.0 && y <= 5.5;
+    }
+    return false;
   }
 
   project(x, z, hint = -1, yOrOut = undefined, maybeOut = undefined) {

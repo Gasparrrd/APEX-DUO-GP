@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=32';
-import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=32';
+import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=33';
+import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=33';
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -60,64 +60,32 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
   const n = Math.max(1, Math.floor(Number(botCount) || 1));
   const diffCfg = CONFIG.difficulty[diffKey] || CONFIG.difficulty.normal;
 
-  const baseMeans = {
-    easy: {
-      skillLevel: 0.50,
-      targetSpeedFactor: diffCfg.maxSpeedFactor || 0.75,
-      speedSpread: 0.075,
-      brakeLookaheadMult: 1.45,
-      cornerSpeedFactor: 0.85,
-      steerGain: 1.65,
-      steerRateMult: 0.85,
-      apexCut: 0.25,
-      boostSeekWeight: 2.20,       // Vise les boosts (+75%)
-      boostMaxLatDeviation: 5.5,
-      boostThreshold: 18,
-      boostMaxCurvature: 0.0038,
-      corridorHalfWidth: 1.50,     // Liberté de trajectoire élargie (+75%)
-      decisionRate: 1.25,
-      overtakeAggression: 1.45,    // Dépassements incisifs (+75%)
-      lateralSteeringForce: 2.75,
-    },
-    normal: {
-      skillLevel: 0.75,
-      targetSpeedFactor: diffCfg.maxSpeedFactor || 0.90,
-      speedSpread: 0.065,
-      brakeLookaheadMult: 1.10,
-      cornerSpeedFactor: 0.96,
-      steerGain: 2.25,
-      steerRateMult: 1.20,
-      apexCut: 0.55,
-      boostSeekWeight: 3.40,       // Détection prioritaire des boosts (+75%)
-      boostMaxLatDeviation: 7.8,
-      boostThreshold: 8,
-      boostMaxCurvature: 0.0058,
-      corridorHalfWidth: 2.80,     // Liberté de trajectoire élargie (+75%)
-      decisionRate: 1.80,
-      overtakeAggression: 1.95,    // Dépassements très actifs (+75%)
-      lateralSteeringForce: 3.20,
-    },
-    hard: {
-      skillLevel: 0.96,
-      targetSpeedFactor: diffCfg.maxSpeedFactor || 1.04,
-      speedSpread: 0.055,
-      brakeLookaheadMult: 0.74,
-      cornerSpeedFactor: 1.08,
-      steerGain: 2.85,
-      steerRateMult: 1.55,
-      apexCut: 0.92,
-      boostSeekWeight: 4.20,       // Traque agressive de tous les boosts (+75%)
-      boostMaxLatDeviation: 9.5,
-      boostThreshold: 2,
-      boostMaxCurvature: 0.0092,
-      corridorHalfWidth: 3.80,     // Exploitation de toute la piste (+75%)
-      decisionRate: 2.45,
-      overtakeAggression: 2.75,    // Dépassements d'une agressivité maximale (+75%)
-      lateralSteeringForce: 3.60,
-    },
+  const fallbackByDiff = {
+    easy:   { skill: 0.50, decisionRate: 1.25, lateralSteeringForce: 2.75 },
+    normal: { skill: 0.75, decisionRate: 1.80, lateralSteeringForce: 3.20 },
+    hard:   { skill: 0.96, decisionRate: 2.45, lateralSteeringForce: 3.60 },
   };
+  const fb = fallbackByDiff[diffKey] || fallbackByDiff.normal;
 
-  const mean = baseMeans[diffKey] || baseMeans.normal;
+  // Lecture directe et dynamique de tous les réglages depuis CONFIG.difficulty[diffKey]
+  const mean = {
+    skillLevel: diffCfg.skill ?? fb.skill,
+    targetSpeedFactor: diffCfg.maxSpeedFactor ?? 0.90,
+    speedSpread: diffCfg.speedSpread ?? 0.055,
+    brakeLookaheadMult: diffCfg.brakeLookaheadMult ?? 1.10,
+    cornerSpeedFactor: diffCfg.cornerSpeedFactor ?? 0.94,
+    steerGain: diffCfg.steerGain ?? 2.25,
+    steerRateMult: diffCfg.steerRateMult ?? 1.00,
+    apexCut: diffCfg.apexCut ?? 0.35,
+    boostSeekWeight: diffCfg.boostSeekWeight ?? 2.80,
+    boostMaxLatDeviation: diffCfg.boostMaxLatDeviation ?? 7.5,
+    boostThreshold: diffCfg.boostThreshold ?? 8,
+    boostMaxCurvature: diffCfg.boostMaxCurvature ?? 0.0050,
+    corridorHalfWidth: diffCfg.corridorHalfWidth ?? 2.8,
+    decisionRate: diffCfg.decisionRate ?? fb.decisionRate,
+    overtakeAggression: diffCfg.overtakeAggression ?? 1.95,
+    lateralSteeringForce: diffCfg.lateralSteeringForce ?? fb.lateralSteeringForce,
+  };
 
   // Génère un vecteur de n valeurs dans [-1, +1] de moyenne strictement nulle (somme = 0)
   // avec stratification et permutation aléatoire pour que chaque bot soit unique.
@@ -365,7 +333,8 @@ export class AIDriver {
     const L = this.layout;
     const pos = v.chassisBody.position;
 
-    const nearestIdx = L.findNearestIndex(pos.x, pos.z);
+    // Prend en compte la hauteur Y (pos.y) pour éviter tout téléport entre tunnel et piste supérieure
+    const nearestIdx = L.findNearestIndex(pos.x, pos.z, v.trackIndex, 90, pos.y);
     const nextIdx = (nearestIdx + 4) % L.count;
     const wpNow = L.racingPoints[nearestIdx];
     const wpNext = L.racingPoints[nextIdx];
@@ -523,6 +492,7 @@ export class AIDriver {
     for (let i = 0; i < allVehicles.length; i++) {
       const other = allVehicles[i];
       if (!other || other === v) continue;
+      if (Math.abs(other.chassisBody.position.y - pos.y) > 5.5) continue;
       const ds = wrapDelta(other.trackS, v.trackS, L.length);
       if (ds > -1.5 && ds <= lookOvertakeDist) {
         const dLat = other.trackLateral - v.trackLateral;
@@ -814,7 +784,8 @@ export class AIDriver {
       if (L.speedProfile[idx] < minProfileSpeed) minProfileSpeed = L.speedProfile[idx];
     }
 
-    const maxAllowedSpeed = CONFIG.car.topSpeed * this.maxSpeedFactor;
+    const vModTop = VEHICLE_MODIFIERS[v.bodyType]?.topSpeed || 1.0;
+    const maxAllowedSpeed = CONFIG.car.topSpeed * vModTop * this.maxSpeedFactor;
     let targetSpeed = Math.min(maxAllowedSpeed, minProfileSpeed * this.cornerSpeedFactor);
 
     if (v.finished) {

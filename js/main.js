@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS } from './config.js?v=32';
-import { InputManager } from './core/input.js?v=32';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=32';
-import { GarageScene } from './scenes/garageScene.js?v=32';
-import { RaceScene } from './scenes/raceScene.js?v=32';
-import { HUDController } from './ui/hud.js?v=32';
-import { soundManager } from './core/audio.js?v=32';
-import { NetworkManager } from './net/networkManager.js?v=32';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=33';
+import { InputManager } from './core/input.js?v=33';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=33';
+import { GarageScene } from './scenes/garageScene.js?v=33';
+import { RaceScene } from './scenes/raceScene.js?v=33';
+import { HUDController } from './ui/hud.js?v=33';
+import { soundManager } from './core/audio.js?v=33';
+import { NetworkManager } from './net/networkManager.js?v=33';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -825,7 +825,7 @@ class RacingApp {
    * sans modifier les autres réglages (son moteur, difficulté, tours, nombre de bots, voitures).
    */
   applyAllRandomSettings() {
-    const circuits = ['flat', 'mountain', 'valley', 'lake'];
+    const circuits = ['flat', 'mountain', 'valley', 'lake', 'grotto'];
     const randomCircuit = circuits[Math.floor(Math.random() * circuits.length)];
     this.setCircuitMode(randomCircuit);
 
@@ -1613,22 +1613,18 @@ class RacingApp {
   }
 
   _updateVehicleStatBars(bodyType) {
-    const mod = VEHICLE_MODIFIERS[bodyType] || VEHICLE_MODIFIERS.supercar;
-    const fmt = (m) => {
-      const diff = Math.round((m - 1) * 100);
-      if (diff === 0) return 'Neutre';
-      return diff > 0 ? `+${diff}%` : `${diff}%`;
-    };
-    const toPct = (m) => `${Math.round(50 + (m - 0.8) * 110)}%`;
+    // Liaison dynamique directe avec computeVehicleStats (js/config.js) :
+    // Toute modification de VEHICLE_MODIFIERS ou de CONFIG.car se reflète 1:1 en % dans le salon.
+    const disp = getVehicleDisplayStats(bodyType);
 
-    document.getElementById('stat-bar-speed').style.width = toPct(mod.topSpeed);
-    document.getElementById('stat-val-speed').textContent = fmt(mod.topSpeed);
+    document.getElementById('stat-bar-speed').style.width = disp.speedBarWidth;
+    document.getElementById('stat-val-speed').textContent = disp.speedText;
 
-    document.getElementById('stat-bar-accel').style.width = toPct(mod.acceleration);
-    document.getElementById('stat-val-accel').textContent = fmt(mod.acceleration);
+    document.getElementById('stat-bar-accel').style.width = disp.accelBarWidth;
+    document.getElementById('stat-val-accel').textContent = disp.accelText;
 
-    document.getElementById('stat-bar-grip').style.width = toPct(mod.grip);
-    document.getElementById('stat-val-grip').textContent = fmt(mod.grip);
+    document.getElementById('stat-bar-grip').style.width = disp.gripBarWidth;
+    document.getElementById('stat-val-grip').textContent = disp.gripText;
   }
 
   _updateSwatchSelection(hex) {
@@ -1715,7 +1711,7 @@ class RacingApp {
 
     let resolvedCircuit = this.raceSettings.circuit;
     if (resolvedCircuit === 'random') {
-      const circuits = ['flat', 'mountain', 'valley', 'lake'];
+      const circuits = ['flat', 'mountain', 'valley', 'lake', 'grotto'];
       resolvedCircuit = circuits[Math.floor(Math.random() * circuits.length)];
     }
 
@@ -1821,7 +1817,7 @@ class RacingApp {
     if (rebuildFromLobby || this.raceScene.vehicles.length === 0) {
       let actualCircuit = this.raceSettings.circuit;
       if (actualCircuit === 'random') {
-        const circuits = ['flat', 'mountain', 'valley', 'lake'];
+        const circuits = ['flat', 'mountain', 'valley', 'lake', 'grotto'];
         actualCircuit = circuits[Math.floor(Math.random() * circuits.length)];
       }
 

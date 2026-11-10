@@ -6,7 +6,7 @@
  * fonctionnent quel que soit le système ou la disposition active.
  * Zéro allocation mémoire par frame (`_ctrlOut` pré-alloué).
  */
-import { CONTROLS } from '../config.js?v=32';
+import { CONTROLS } from '../config.js?v=33';
 
 export class InputManager {
   constructor() {

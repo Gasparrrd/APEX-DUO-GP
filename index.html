@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>APEX DUO GP — Course 3D Solo, Écran Scindé & Multijoueur P2P</title>
-  <link rel="stylesheet" href="css/style.css?v=32" />
+  <link rel="stylesheet" href="css/style.css?v=33" />
   <!-- PeerJS (WebRTC DataChannel P2P à très faible latence) -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script type="importmap">
@@ -109,7 +109,7 @@
             <div class="stat-bar-row">
               <span>Accélération</span>
               <div class="stat-bar-track"><div id="stat-bar-accel" class="stat-bar-fill"></div></div>
-              <strong id="stat-val-accel">1.0x</strong>
+              <strong id="stat-val-accel">+0%</strong>
             </div>
             <div class="stat-bar-row">
               <span>Adhérence / Grip</span>
@@ -332,6 +332,7 @@
               <button type="button" class="option-btn circuit-option-btn" data-circuit-id="mountain">2 · Montagne</button>
               <button type="button" class="option-btn circuit-option-btn" data-circuit-id="valley">3 · Vallée & Pont</button>
               <button type="button" class="option-btn circuit-option-btn" data-circuit-id="lake">4 · Lac & Végétation</button>
+              <button type="button" class="option-btn circuit-option-btn" data-circuit-id="grotto">5 · Le Col de la Grotte</button>
               <button type="button" class="option-btn circuit-option-btn circuit-random-btn" data-circuit-id="random">🎲 Circuit Aléatoire</button>
             </div>
           </div>
@@ -750,6 +751,6 @@
   <!-- Musique d'ambiance du Salon / Garage (fichiers MP3 externe avec fade-in / fade-out) -->
   <audio id="lobby-music" src="./salon.mp3" loop preload="auto"></audio>
 
-  <script type="module" src="js/main.js?v=32"></script>
+  <script type="module" src="js/main.js?v=33"></script>
 </body>
 </html>

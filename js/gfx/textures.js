@@ -3,7 +3,7 @@
  * Chaque texture est mise en cache : elle n'est générée qu'une seule fois.
  */
 import * as THREE from 'three';
-import { seededRandom } from '../core/utils.js?v=32';
+import { seededRandom } from '../core/utils.js?v=33';
 
 const cache = new Map();
 
