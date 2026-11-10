@@ -86,7 +86,7 @@ export const CONFIG = {
     dragCoef: 0.80,                  // Résistance de l'air
     rollingResistance: 24,           // Frottement des pneus
     downforce: 3.4,                  // Appui aérodynamique (plaque la voiture au sol)
-    grassDrag: 4,                  // Ralentissement supplémentaire dans l'herbe
+    grassDrag: 10,                  // Ralentissement supplémentaire dans l'herbe
     topSpeed: 80,                    // Vitesse max de base en m/s
     angularDamping: 0.52,            // Amortissement des rotations (anti tête-à-queue)
   },
