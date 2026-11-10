@@ -65,7 +65,7 @@ export const CONFIG = {
     rollInfluence: 0.08,             // Roulis de la carrosserie en virage
     frictionFront: 3.25,             // Adhérence des pneus avant
     frictionRear: 3.45,              // Adhérence des pneus arrière
-    lateralGripDamping: 8.8,         // Résistance au glissement latéral (plus haut = moins de glisse)
+    lateralGripDamping: 8.0,         // Résistance au glissement latéral (plus haut = moins de glisse)
     slideRate: 0.55,                 // Taux de glissade global de base (modulé en temps réel par la météo, la vitesse et le braquage)
     manualDriftIntensity: 0.22,      // Force du dérapage manuel frein + braquage (0 = aucun, plus haut = plus violent)
     manualDriftMinSpeed: 11,         // Vitesse min (m/s) pour déclencher le dérapage manuel au frein (~40 km/h)
@@ -74,7 +74,7 @@ export const CONFIG = {
     maxEngineForce: 7400,            // Force motrice max à basse vitesse en N
     frontTorqueShare: 0.38,          // Part de motricité sur l'avant (0.38 = 38%)
     reverseForce: 2800,              // Force en marche arrière en N
-    maxReverseSpeed: 10,             // Vitesse max en marche arrière (m/s)
+    maxReverseSpeed: 20,             // Vitesse max en marche arrière (m/s)
     brakeImpulse: 45,                // Puissance de freinage
     engineBrake: 2.5,                // Frein moteur quand on lâche l'accélérateur
     maxSteer: 0.50,                  // Braquage max à basse vitesse (rad)
@@ -86,7 +86,7 @@ export const CONFIG = {
     dragCoef: 0.80,                  // Résistance de l'air
     rollingResistance: 24,           // Frottement des pneus
     downforce: 3.4,                  // Appui aérodynamique (plaque la voiture au sol)
-    grassDrag: 3.2,                  // Ralentissement supplémentaire dans l'herbe
+    grassDrag: 4,                  // Ralentissement supplémentaire dans l'herbe
     topSpeed: 80,                    // Vitesse max de base en m/s
     angularDamping: 0.52,            // Amortissement des rotations (anti tête-à-queue)
   },
@@ -97,8 +97,8 @@ export const CONFIG = {
     drain: 100 / 7.5,                // Consommation du boost (%/s)
     regen: 0,                        // Recharge passive du boost (0 = aucune)
     checkpointBonus: 0,              // Boost gagné par checkpoint
-    speedMultiplier: 1.50,           // Multiplicateur de vitesse max pendant le boost
-    forceMultiplier: 1.25,           // Multiplicateur de force motrice pendant le boost
+    speedMultiplier: 1.75,           // Multiplicateur de vitesse max pendant le boost
+    forceMultiplier: 1.4,           // Multiplicateur de force motrice pendant le boost
     force: 5700,                     // Poussée directe du boost en N
     topSpeedBonus: 12.0,             // Bonus de vitesse de pointe pendant le boost (m/s)
     tokenCount: 7,                   // Nombre de jetons de boost
@@ -118,7 +118,7 @@ export const CONFIG = {
     lateralAccel: 14.5,              // Accélération latérale max tolérée par l'IA
     brakeDecel: 10.5,                // Décélération de freinage de l'IA
     maxSpeed: 80,                    // Vitesse max de référence de l'IA
-    lineMargin: 1.7,                 // Marge de l'IA par rapport aux bords de piste (m)
+    lineMargin: 2.5,                 // Marge de l'IA par rapport aux bords de piste (m)
     unstuckTime: 5.0,                // Délai (s) avant replacement d'un bot bloqué
     relaunchSpeed: 11.0,             // Vitesse (m/s) donnée à un bot replacé
   },
@@ -126,24 +126,24 @@ export const CONFIG = {
   difficulty: {
     easy: {
       label: 'Facile',               // Nom affiché
-      skill: 0.75,                   // Niveau de compétence global
+      skill: 0.85,                   // Niveau de compétence global
       maxSpeedFactor: 0.75,          // Part de la vitesse max utilisée
       speedSpread: 0.040,            // Écart aléatoire de vitesse entre bots
-      brakeLookaheadMult: 1.75,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      brakeLookaheadMult: 1.5,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.82,       // Vitesse conservée en virage
       steerGain: 1.55,               // Précision du volant
       steerRateMult: 0.68,           // Rapidité du volant
       apexCut: 0.0,                  // Tendance à couper à la corde
       boostSeekWeight: 1.75,         // Priorité donnée à la chasse aux boosts
       boostMaxLatDeviation: 3.8,     // Déviation latérale max pour un boost (m)
-      boostThreshold: 22,            // Boost min avant utilisation (%)
+      boostThreshold: 10,            // Boost min avant utilisation (%)
       boostMaxCurvature: 0.0028,     // Courbure max pour booster
       corridorHalfWidth: 1.5,        // Liberté de déviation autour de la trajectoire (m)
       overtakeAggression: 1.30,      // Agressivité des dépassements
     },
     normal: {
       label: 'Moyen',                // Nom affiché
-      skill: 0.90,                   // Niveau de compétence global
+      skill: 0.95,                   // Niveau de compétence global
       maxSpeedFactor: 0.90,          // Part de la vitesse max utilisée
       speedSpread: 0.045,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 1.08,      // Distance d'anticipation du freinage (plus bas = freine tard)
@@ -152,10 +152,10 @@ export const CONFIG = {
       steerRateMult: 1.00,           // Rapidité du volant
       apexCut: 0.28,                 // Tendance à couper à la corde
       boostSeekWeight: 2.80,         // Priorité donnée à la chasse aux boosts
-      boostMaxLatDeviation: 5.8,     // Déviation latérale max pour un boost (m)
-      boostThreshold: 8,             // Boost min avant utilisation (%)
+      boostMaxLatDeviation: 7.5,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 0,             // Boost min avant utilisation (%)
       boostMaxCurvature: 0.0048,     // Courbure max pour booster
-      corridorHalfWidth: 2.7,        // Liberté de déviation autour de la trajectoire (m)
+      corridorHalfWidth: 3.2,        // Liberté de déviation autour de la trajectoire (m)
       overtakeAggression: 1.95,      // Agressivité des dépassements
     },
     hard: {
@@ -169,10 +169,10 @@ export const CONFIG = {
       steerRateMult: 1.35,           // Rapidité du volant
       apexCut: 0.88,                 // Tendance à couper à la corde
       boostSeekWeight: 3.80,         // Priorité donnée à la chasse aux boosts
-      boostMaxLatDeviation: 8.2,     // Déviation latérale max pour un boost (m)
-      boostThreshold: 2,             // Boost min avant utilisation (%)
+      boostMaxLatDeviation: 10,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 0,             // Boost min avant utilisation (%)
       boostMaxCurvature: 0.0095,     // Courbure max pour booster
-      corridorHalfWidth: 3.8,        // Liberté de déviation autour de la trajectoire (m)
+      corridorHalfWidth: 4.2,        // Liberté de déviation autour de la trajectoire (m)
       overtakeAggression: 2.75,      // Agressivité des dépassements
     },
   },
@@ -195,15 +195,15 @@ export const VEHICLE_MODIFIERS = {
   },
   muscle: {
     label: 'Muscle Car',             // Nom affiché
-    topSpeed: 1.00,                  // Vitesse max de base en m/s
-    acceleration: 1.20,              // Multiplicateur d'accélération
-    grip: 0.90,                      // Adhérence / facilité à tourner
+    topSpeed: 1.05,                  // Vitesse max de base en m/s
+    acceleration: 1.30,              // Multiplicateur d'accélération
+    grip: 0.95,                      // Adhérence / facilité à tourner
     braking: 0.95,                   // Multiplicateur de freinage
     description: 'Vitesse Neutre · Couple +20% · Grip -10%', // Texte affiché dans le garage
   },
   formula: {
     label: 'Monoplace',              // Nom affiché
-    topSpeed: 0.90,                  // Vitesse max de base en m/s
+    topSpeed: 0.85,                  // Vitesse max de base en m/s
     acceleration: 1.10,              // Multiplicateur d'accélération
     grip: 1.25,                      // Adhérence / facilité à tourner
     braking: 1.22,                   // Multiplicateur de freinage
