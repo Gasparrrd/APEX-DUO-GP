@@ -75,6 +75,12 @@ export class NetworkManager {
 
     this.localBroadcast = null;
     this._openFallbackTimer = null;
+    this._guestConnectRetryTimer = null;
+    this._httpRelayTimer = null;
+    this._httpLastSeq = 0;
+    this._httpFastPushTs = 0;
+    this._controlSeq = 0;
+    this._seenControlMsgIds = new Set();
     this._localClientId = `cli_${Math.random().toString(36).slice(2, 9)}`;
 
     this.connected = false;
@@ -266,6 +272,13 @@ export class NetworkManager {
     };
 
     const desiredPeerId = forcedCode || NetworkManager.generateShortRoomCode();
+    const initialInviteUrl = this._setRoomId(desiredPeerId);
+    this.slots[0].peerId = desiredPeerId;
+    this._setupLocalBroadcast(desiredPeerId);
+    this._startLocalHttpRelay(desiredPeerId);
+
+    // Rend le code de salon et le canal local immédiatement opérationnels sans attendre le broker externe
+    this.onPeerReady(desiredPeerId, initialInviteUrl, 'Salon prêt');
 
     const finalizeHostOpen = (resolvedId, badgeText = 'Salon prêt') => {
       if (!this.active || this.role !== 'host') return;
@@ -278,6 +291,7 @@ export class NetworkManager {
       this.slots[0].peerId = resolvedId;
       const inviteUrl = this._setRoomId(resolvedId);
       this._setupLocalBroadcast(resolvedId);
+      this._startLocalHttpRelay(resolvedId);
       if (!wasOpen || this.roomId === resolvedId) {
         console.log('[P2P Host] Salon prêt — Code:', resolvedId, '| Lien:', inviteUrl);
         this.onPeerReady(resolvedId, inviteUrl, badgeText);
@@ -290,7 +304,7 @@ export class NetworkManager {
         console.warn('[P2P Host] Délai broker PeerJS dépassé — activation du salon:', desiredPeerId);
         finalizeHostOpen(desiredPeerId, 'Salon prêt');
       }
-    }, 8000);
+    }, 5000);
 
     const PeerCtor = typeof window !== 'undefined' ? (window.Peer || window.peerjs?.Peer) : null;
     if (typeof PeerCtor === 'function') {
@@ -375,15 +389,48 @@ export class NetworkManager {
 
     const inviteUrl = this._setRoomId(cleanRoomId);
     this._setupLocalBroadcast(cleanRoomId);
+    this._startLocalHttpRelay(cleanRoomId);
 
-    // Envoi immédiat sur BroadcastChannel (utile si test multi-onglets sur le même navigateur)
-    this._sendControlMessage({
-      type: 'GUEST_HELLO',
-      clientId: this._localClientId,
-      guestName: this.guestName,
-      carConfig: this._lastGuestCarConfig,
-      ready: false,
-    });
+    const sendHelloHandshake = () => {
+      if (!this.active || this.role !== 'guest') return;
+      this._sendControlMessage({
+        type: 'GUEST_HELLO',
+        clientId: this._localClientId,
+        guestName: this.guestName,
+        carConfig: this._lastGuestCarConfig,
+        ready: Boolean(this.slots[this.mySlotIndex]?.ready),
+      });
+    };
+
+    // Envoi immédiat sur BroadcastChannel & Relais HTTP
+    sendHelloHandshake();
+
+    const attemptPeerConnect = () => {
+      if (!this.active || this.role !== 'guest' || !this.peer || !this.peerOpen) return;
+      if (this.reliableConn && this.reliableConn.open) return;
+      try {
+        const relConn = this.peer.connect(cleanRoomId, {
+          reliable: true,
+          metadata: { channel: 'control', guestName: this.guestName, clientId: this._localClientId },
+        });
+        this._bindGuestConnectionEvents(relConn, 'control', cleanRoomId);
+      } catch (err) {
+        console.warn('[PeerJS Guest Connect Attempt Error]', err);
+      }
+    };
+
+    // Boucle de relance automatique tant que l'invité n'a pas reçu HOST_WELCOME
+    this._guestConnectRetryTimer = setInterval(() => {
+      if (!this.active || this.role !== 'guest') {
+        clearInterval(this._guestConnectRetryTimer);
+        this._guestConnectRetryTimer = null;
+        return;
+      }
+      if (!this.connected) {
+        sendHelloHandshake();
+        attemptPeerConnect();
+      }
+    }, 1500);
 
     const PeerCtor = typeof window !== 'undefined' ? (window.Peer || window.peerjs?.Peer) : null;
     if (typeof PeerCtor === 'function') {
@@ -398,20 +445,7 @@ export class NetworkManager {
           this._peerBrokerId = myGuestPeerId || null;
           console.log('[P2P Guest] Connecté au broker PeerJS:', myGuestPeerId, '-> Connexion au salon:', cleanRoomId);
           this.onPeerReady(cleanRoomId, inviteUrl, 'Connexion au salon…');
-
-          const relConn = this.peer.connect(cleanRoomId, {
-            reliable: true,
-            serialization: 'json',
-            metadata: { channel: 'control', guestName: this.guestName, clientId: this._localClientId },
-          });
-          this._bindGuestConnectionEvents(relConn, 'control');
-
-          const fastConn = this.peer.connect(cleanRoomId, {
-            reliable: false,
-            serialization: 'binary',
-            metadata: { channel: 'fast', clientId: this._localClientId },
-          });
-          this._bindGuestConnectionEvents(fastConn, 'fast');
+          attemptPeerConnect();
         });
 
         this.peer.on('error', (err) => {
@@ -443,6 +477,63 @@ export class NetworkManager {
         this._handleControlMessage(data, data.senderClientId || 'local_bc');
       }
     };
+  }
+
+  /**
+   * Démarre le relais HTTP local `/api/p2p` (quand servi par `server.py`) pour garantir
+   * la connexion même entre deux navigateurs différents ou derrière un pare-feu bloquant WebRTC.
+   */
+  _startLocalHttpRelay(roomId) {
+    if (this._httpRelayTimer) {
+      clearInterval(this._httpRelayTimer);
+      this._httpRelayTimer = null;
+    }
+    this._httpLastSeq = 0;
+    if (typeof fetch !== 'function' || !roomId) return;
+
+    const pollHttp = () => {
+      if (!this.active || !this.roomId) return;
+      const url = `/api/p2p?room=${encodeURIComponent(this.roomId)}&clientId=${encodeURIComponent(this._localClientId)}&since=${this._httpLastSeq}`;
+      fetch(url, { method: 'GET', cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data || !this.active) return;
+          if (typeof data.seq === 'number' && data.seq > this._httpLastSeq) {
+            this._httpLastSeq = data.seq;
+          }
+          if (Array.isArray(data.events)) {
+            for (const ev of data.events) {
+              if (ev && ev.senderClientId !== this._localClientId) {
+                this._handleControlMessage(ev, ev.senderClientId || 'http_relay');
+              }
+            }
+          }
+          if (Array.isArray(data.fast)) {
+            for (const arr of data.fast) {
+              if (Array.isArray(arr) && arr.length >= 7) {
+                this._handleBinaryPacket(new Float32Array(arr), null);
+              }
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    this._httpRelayTimer = setInterval(pollHttp, 160);
+    pollHttp();
+  }
+
+  _postHttpRelay(payloadObj) {
+    if (typeof fetch !== 'function' || !this.active || !this.roomId) return;
+    fetch('/api/p2p', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        room: this.roomId,
+        clientId: this._localClientId,
+        ...payloadObj,
+      }),
+    }).catch(() => {});
   }
 
   /**
@@ -579,7 +670,7 @@ export class NetworkManager {
   /**
    * Côté Invité : gère les événements des canaux `control` et `fast` connectés à l'Hôte.
    */
-  _bindGuestConnectionEvents(conn, chType) {
+  _bindGuestConnectionEvents(conn, chType, cleanRoomId = null) {
     if (!conn) return;
     if (chType === 'fast') {
       this.fastConn = conn;
@@ -597,6 +688,21 @@ export class NetworkManager {
           carConfig: this._lastGuestCarConfig,
           ready: Boolean(this.slots[this.mySlotIndex]?.ready),
         });
+        // Ouvre le canal rapide non-bloquant une fois le canal fiable établi (évite les collisions ICE/SDP)
+        const targetRoom = cleanRoomId || this.roomId;
+        if (targetRoom && this.peer && (!this.fastConn || !this.fastConn.open)) {
+          setTimeout(() => {
+            if (!this.active || this.role !== 'guest' || !this.peer) return;
+            try {
+              const fastConn = this.peer.connect(targetRoom, {
+                reliable: false,
+                serialization: 'binary',
+                metadata: { channel: 'fast', clientId: this._localClientId },
+              });
+              this._bindGuestConnectionEvents(fastConn, 'fast', targetRoom);
+            } catch (_) {}
+          }, 180);
+        }
       }
       this.onPeerConnected(this.mySlotIndex);
       this._emitState();
@@ -631,6 +737,7 @@ export class NetworkManager {
     if (!entry || !entry.controlConn || !entry.controlConn.open) return;
     const msg = {
       type: 'HOST_WELCOME',
+      msgId: `${this._localClientId}_${++this._controlSeq}`,
       assignedSlot: entry.slotIndex,
       roomId: this.roomId,
       hostName: this.hostName,
@@ -663,6 +770,7 @@ export class NetworkManager {
     if (!this.active) return;
     const msg = {
       ...payload,
+      msgId: payload.msgId || `${this._localClientId}_${++this._controlSeq}`,
       senderRole: this.role,
       senderSlot: this.mySlotIndex,
       senderClientId: this._localClientId,
@@ -681,6 +789,8 @@ export class NetworkManager {
     if (this.localBroadcast) {
       try { this.localBroadcast.postMessage(msg); } catch (_) {}
     }
+
+    this._postHttpRelay({ msg });
   }
 
   _sendFastBinary(floatArray) {
@@ -714,25 +824,36 @@ export class NetworkManager {
           return;
         }
         try { this.fastConn.send(buffer); } catch (_) {}
-        return;
-      }
-      if (this.reliableConn && this.reliableConn.open) {
+      } else if (this.reliableConn && this.reliableConn.open) {
         const dc = this.reliableConn.dataChannel || this.reliableConn._dc;
         if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 16384) {
           return;
         }
         try { this.reliableConn.send(buffer); } catch (_) {}
-        return;
       }
     }
 
     if (this.localBroadcast) {
       try { this.localBroadcast.postMessage(buffer); } catch (_) {}
     }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - this._httpFastPushTs >= 110) {
+      this._httpFastPushTs = now;
+      this._postHttpRelay({ fast: Array.from(floatArray) });
+    }
   }
 
   _handleControlMessage(msg, senderPeerId = null, hostEntry = null) {
     if (!msg || !msg.type) return;
+    if (msg.msgId) {
+      if (this._seenControlMsgIds.has(msg.msgId)) return;
+      this._seenControlMsgIds.add(msg.msgId);
+      if (this._seenControlMsgIds.size > 400) {
+        const firstKey = this._seenControlMsgIds.values().next().value;
+        this._seenControlMsgIds.delete(firstKey);
+      }
+    }
 
     switch (msg.type) {
       case 'ROOM_FULL': {
@@ -1432,6 +1553,15 @@ export class NetworkManager {
       clearTimeout(this._openFallbackTimer);
       this._openFallbackTimer = null;
     }
+    if (this._guestConnectRetryTimer) {
+      clearInterval(this._guestConnectRetryTimer);
+      this._guestConnectRetryTimer = null;
+    }
+    if (this._httpRelayTimer) {
+      clearInterval(this._httpRelayTimer);
+      this._httpRelayTimer = null;
+    }
+    this._seenControlMsgIds.clear();
     this.active = false;
     this.role = 'offline';
     this.mySlotIndex = 0;

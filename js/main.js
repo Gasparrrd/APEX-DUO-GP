@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=33';
-import { InputManager } from './core/input.js?v=33';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=33';
-import { GarageScene } from './scenes/garageScene.js?v=33';
-import { RaceScene } from './scenes/raceScene.js?v=33';
-import { HUDController } from './ui/hud.js?v=33';
-import { soundManager } from './core/audio.js?v=33';
-import { NetworkManager } from './net/networkManager.js?v=33';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=34';
+import { InputManager } from './core/input.js?v=34';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=34';
+import { GarageScene } from './scenes/garageScene.js?v=34';
+import { RaceScene } from './scenes/raceScene.js?v=34';
+import { HUDController } from './ui/hud.js?v=34';
+import { soundManager } from './core/audio.js?v=34';
+import { NetworkManager } from './net/networkManager.js?v=34';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -200,9 +200,6 @@ class RacingApp {
         event.preventDefault();
         event.stopPropagation();
         const modeKey = btn.dataset.gameMode;
-        if (this.network.role === 'guest' && this.network.guestReady && modeKey !== 'ONLINE') {
-          return;
-        }
         this.setGameMode(modeKey);
       });
     });
@@ -324,6 +321,7 @@ class RacingApp {
     const tabJoin = document.getElementById('tab-online-role-join');
     const hostPanel = document.getElementById('online-host-panel');
     const joinPanel = document.getElementById('online-join-panel');
+    const guestPanel = document.getElementById('online-guest-panel');
 
     if (tabHost && tabJoin && hostPanel && joinPanel) {
       tabHost.addEventListener('click', (e) => {
@@ -332,6 +330,7 @@ class RacingApp {
         tabJoin.classList.remove('active');
         hostPanel.classList.remove('hidden');
         joinPanel.classList.add('hidden');
+        if (guestPanel) guestPanel.classList.add('hidden');
         if (this.network && this.network.role !== 'host') {
           const hostNameInput = document.getElementById('online-host-name');
           const hostName = (hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim() : 'HÔTE';
@@ -339,8 +338,11 @@ class RacingApp {
           this.activeGaragePlayer = 0;
           this.garageScene.setActivePlayer(0);
           this.network.initHost(hostName, this.playerConfigs[0], this.raceSettings);
+          this._syncGarageCarsAndCamera();
+          this._update3DPodiumBadges();
           this._syncCustomizerUI();
           this._updateWaitingRoomSlotsUI();
+          this._refreshOnlineStatusUI();
         }
       });
 
@@ -348,12 +350,28 @@ class RacingApp {
         e.preventDefault();
         tabJoin.classList.add('active');
         tabHost.classList.remove('active');
+        if (this.network && this.network.role === 'guest') {
+          this.network.leaveGroup();
+          this.activeGaragePlayer = 0;
+          this.garageScene.setActivePlayer(0);
+        }
         joinPanel.classList.remove('hidden');
         hostPanel.classList.add('hidden');
+        if (guestPanel) guestPanel.classList.add('hidden');
+        this._refreshOnlineStatusUI();
         const joinInput = document.getElementById('online-join-code-input');
         if (joinInput) {
           setTimeout(() => joinInput.focus(), 40);
         }
+      });
+    }
+
+    const btnGuestLeavePanel = document.getElementById('btn-guest-leave-panel');
+    if (btnGuestLeavePanel) {
+      btnGuestLeavePanel.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.leaveOnlineGroup();
       });
     }
 
@@ -703,6 +721,12 @@ class RacingApp {
 
     if (normalizedMode === 'ONLINE') {
       if (!options.skipHostInit && this.network.role === 'offline') {
+        const tabHost = document.getElementById('tab-online-role-host');
+        const tabJoin = document.getElementById('tab-online-role-join');
+        if (tabHost && tabJoin) {
+          tabHost.classList.add('active');
+          tabJoin.classList.remove('active');
+        }
         this._prepareHostUIBeforeOpen();
         const hostNameInput = document.getElementById('online-host-name');
         const hostName = (hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim() : 'HÔTE';
@@ -714,10 +738,14 @@ class RacingApp {
       this._update3DPodiumBadges();
       this._updateWaitingRoomSlotsUI();
     } else {
+      if (this.network && (this.network.active || this.network.role !== 'offline')) {
+        this.network.leaveGroup();
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (_) {}
+      }
       const count = this.raceSettings.playerCount;
-      if (this.network.role === 'guest') {
-        this.activeGaragePlayer = 1;
-      } else if (count <= 1 && this.activeGaragePlayer !== 0) {
+      if (count <= 1 && this.activeGaragePlayer !== 0) {
         this.activeGaragePlayer = 0;
       }
       this._syncGarageCarsAndCamera();
@@ -984,9 +1012,12 @@ class RacingApp {
       btnCopyCode.disabled = false;
     }
 
-    if (this.network.role === 'host' && this.currentGameMode === 'ONLINE' && roomId) {
+    // Ne pollue pas la barre d'adresse de l'Hôte avec ?room=... pour éviter qu'un F5 ne le bascule en Invité
+    if (this.network.role === 'host') {
       try {
-        window.history.replaceState({}, '', `${window.location.pathname}?room=${roomId}`);
+        if (window.location.search.includes('room=')) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       } catch (_) {}
     }
 
@@ -1131,6 +1162,13 @@ class RacingApp {
 
     const joinCodeInput = document.getElementById('online-join-code-input');
     if (joinCodeInput) joinCodeInput.value = cleanRoomId;
+
+    const tabHost = document.getElementById('tab-online-role-host');
+    const tabJoin = document.getElementById('tab-online-role-join');
+    if (tabHost && tabJoin) {
+      tabJoin.classList.add('active');
+      tabHost.classList.remove('active');
+    }
 
     this.activeGaragePlayer = 1;
     this.garageScene.updateCarConfig(1, { name: pseudo });
@@ -1419,7 +1457,7 @@ class RacingApp {
       onlineBox.classList.toggle('hidden', !isOnlineMode);
     }
     if (roleTabs) {
-      roleTabs.classList.toggle('hidden', isGuest);
+      roleTabs.classList.remove('hidden');
     }
     if (guestPanel) {
       guestPanel.classList.toggle('hidden', !isGuest);
@@ -1433,6 +1471,11 @@ class RacingApp {
         hostPanel.classList.toggle('hidden', isTabJoin);
         joinPanel.classList.toggle('hidden', !isTabJoin);
       }
+    }
+
+    const guestRoomCodeEl = document.getElementById('online-guest-room-code');
+    if (guestRoomCodeEl && this.network?.roomId) {
+      guestRoomCodeEl.textContent = this.network.roomId;
     }
 
     const tabReadyDot = document.getElementById('online-tab-ready-dot');
@@ -1952,6 +1995,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (roomParam) {
     const cleanCode = NetworkManager.normalizeRoomCode(roomParam);
     app._pendingRoomId = cleanCode;
+
+    // Nettoie l'URL immédiatement pour éviter qu'un rechargement ultérieur ne bloque en mode Invité
+    try {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (_) {}
 
     const joinCodeInput = document.getElementById('online-join-code-input');
     if (joinCodeInput) {
