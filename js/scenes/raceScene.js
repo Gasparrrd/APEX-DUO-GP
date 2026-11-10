@@ -14,8 +14,8 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=33';
-import { TrackLayout } from '../track/trackLayout.js?v=33';
-import { TrackBuilder } from '../track/trackBuilder.js?v=33';
+import { TrackLayout } from '../track/trackLayout.js?v=38';
+import { TrackBuilder } from '../track/trackBuilder.js?v=38';
 import { BoostTokenSystem } from '../track/boostTokens.js?v=33';
 import { Vehicle } from '../physics/vehicle.js?v=33';
 import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=33';
@@ -678,7 +678,6 @@ export class RaceScene {
     } = st;
 
     v.isNetDriven = true;
-    v.netTargetPos.set(px, py, pz);
     v.netTargetQuat.set(qx, qy, qz, qw);
     v.netTargetSpeed = forwardSpeed;
 
@@ -689,6 +688,15 @@ export class RaceScene {
       _netFwd.x * forwardSpeed + _netRight.x * latSpd,
       _netFwd.y * forwardSpeed + _netRight.y * latSpd,
       _netFwd.z * forwardSpeed + _netRight.z * latSpd
+    );
+
+    const leadSec = (this.state === 'racing' && !Boolean(flags & 16) && Math.abs(forwardSpeed) > 0.35)
+      ? (this.network?.oneWayLatencySec ?? 0.03)
+      : 0;
+    v.netTargetPos.set(
+      px + v.netVel.x * leadSec,
+      py + v.netVel.y * leadSec,
+      pz + v.netVel.z * leadSec
     );
 
     v.forwardSpeed = forwardSpeed;
@@ -823,12 +831,20 @@ export class RaceScene {
         v.triggerHudNotification(text, type, 1.5);
       }
 
-      v.netTargetPos.set(px, py, pz);
       v.netTargetQuat.set(qx, qy, qz, qw);
       v.netTargetSpeed = fwdSpeed;
 
       _netFwd.set(0, 0, -1).applyQuaternion(v.netTargetQuat);
       v.netVel.set(_netFwd.x * fwdSpeed, _netFwd.y * fwdSpeed, _netFwd.z * fwdSpeed);
+
+      const leadSec = (this.state === 'racing' && !Boolean(flags & 16) && Math.abs(fwdSpeed) > 0.35)
+        ? (this.network?.oneWayLatencySec ?? 0.03)
+        : 0;
+      v.netTargetPos.set(
+        px + v.netVel.x * leadSec,
+        py + v.netVel.y * leadSec,
+        pz + v.netVel.z * leadSec
+      );
 
       v.forwardSpeed = fwdSpeed;
       v.speedKmh = Math.abs(fwdSpeed) * 3.6;
@@ -861,12 +877,20 @@ export class RaceScene {
       v.netTargetPos.z += v.netVel.z * dt;
     }
 
-    const interpFactor = 1.0 - Math.exp(-22.0 * dt);
-    v.currPhysicsPos.lerp(v.netTargetPos, interpFactor);
-    v.prevPhysicsPos.copy(v.currPhysicsPos);
+    const distSq = v.currPhysicsPos.distanceToSquared(v.netTargetPos);
+    if (distSq > 14.0 * 14.0) {
+      v.currPhysicsPos.copy(v.netTargetPos);
+      v.prevPhysicsPos.copy(v.currPhysicsPos);
+      v.currPhysicsQuat.copy(v.netTargetQuat);
+      v.prevPhysicsQuat.copy(v.currPhysicsQuat);
+    } else {
+      const interpFactor = 1.0 - Math.exp(-32.0 * dt);
+      v.currPhysicsPos.lerp(v.netTargetPos, interpFactor);
+      v.prevPhysicsPos.copy(v.currPhysicsPos);
 
-    v.currPhysicsQuat.slerp(v.netTargetQuat, interpFactor);
-    v.prevPhysicsQuat.copy(v.currPhysicsQuat);
+      v.currPhysicsQuat.slerp(v.netTargetQuat, interpFactor);
+      v.prevPhysicsQuat.copy(v.currPhysicsQuat);
+    }
 
     const body = v.chassisBody;
     body.position.set(v.currPhysicsPos.x, v.currPhysicsPos.y, v.currPhysicsPos.z);

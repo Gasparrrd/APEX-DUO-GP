@@ -17,7 +17,7 @@ const PACKET_GUEST_INPUT = 102;
 const PACKET_GUEST_STATE = 103;
 const HEADER_FLOATS = 7;
 const VEHICLE_FLOATS = 16;
-const NET_TICK_RATE = 30;
+const NET_TICK_RATE = 45;
 const NET_TICK_INTERVAL = 1 / NET_TICK_RATE;
 const MAX_ONLINE_PLAYERS = 4;
 
@@ -116,9 +116,13 @@ export class NetworkManager {
     this._openFallbackTimer = null;
     this._guestConnectRetryTimer = null;
     this._httpRelayTimer = null;
+    this._pingTimer = null;
     this._httpLastSeq = 0;
     this._httpFastPushTs = 0;
     this._controlSeq = 0;
+    this._reliableFallbackTick = 0;
+    this.estimatedRttMs = 60;
+    this.oneWayLatencySec = 0.030;
     this._seenControlMsgIds = new Set();
     this._localClientId = `cli_${Math.random().toString(36).slice(2, 9)}`;
 
@@ -698,6 +702,7 @@ export class NetworkManager {
         this._sendWelcomeToGuestPeer(entry);
         this.broadcastLobbyState();
         this.onPeerConnected(entry.slotIndex);
+        this._startLatencyProbe();
       }
       this._emitState();
     });
@@ -824,8 +829,9 @@ export class NetworkManager {
               });
               this._bindGuestConnectionEvents(fastConn, 'fast', targetBroker);
             } catch (_) {}
-          }, 450);
+          }, 100);
         }
+        this._startLatencyProbe();
       }
       this.onPeerConnected(this.mySlotIndex);
       this._emitState();
@@ -919,25 +925,38 @@ export class NetworkManager {
     this._postHttpRelay({ msg });
   }
 
+  _startLatencyProbe() {
+    if (this._pingTimer) clearInterval(this._pingTimer);
+    this._pingTimer = setInterval(() => {
+      if (!this.active || !this.connected) return;
+      this._sendControlMessage({
+        type: 'NET_PING',
+        ts: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      });
+    }, 2000);
+  }
+
   _sendFastBinary(floatArray) {
     if (!this.active) return;
     const buffer = floatArray.buffer;
+    this._reliableFallbackTick = (this._reliableFallbackTick + 1) % 3;
 
     if (this.role === 'host') {
       for (const entry of this.guestPeers.values()) {
         const fast = entry.fastConn;
         if (fast && fast.open) {
           const dc = fast.dataChannel || fast._dc;
-          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 16384) {
+          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 4096) {
             continue;
           }
           try { fast.send(buffer); } catch (_) {}
           continue;
         }
+        // Fallback fiable limité à ~15 Hz tant que fastConn s'établit, pour éviter le Head-of-Line Blocking
         const rel = entry.controlConn;
-        if (rel && rel.open) {
+        if (rel && rel.open && this._reliableFallbackTick === 0) {
           const dc = rel.dataChannel || rel._dc;
-          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 20480) {
+          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 2048) {
             continue;
           }
           try { rel.send(buffer); } catch (_) {}
@@ -946,13 +965,13 @@ export class NetworkManager {
     } else {
       if (this.fastConn && this.fastConn.open) {
         const dc = this.fastConn.dataChannel || this.fastConn._dc;
-        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 12288) {
+        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 4096) {
           return;
         }
         try { this.fastConn.send(buffer); } catch (_) {}
-      } else if (this.reliableConn && this.reliableConn.open) {
+      } else if (this.reliableConn && this.reliableConn.open && this._reliableFallbackTick === 0) {
         const dc = this.reliableConn.dataChannel || this.reliableConn._dc;
-        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 16384) {
+        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 2048) {
           return;
         }
         try { this.reliableConn.send(buffer); } catch (_) {}
@@ -964,7 +983,7 @@ export class NetworkManager {
     }
 
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    if (now - this._httpFastPushTs >= 110) {
+    if (now - this._httpFastPushTs >= 65) {
       this._httpFastPushTs = now;
       this._postHttpRelay({ fast: Array.from(floatArray) });
     }
@@ -1264,6 +1283,24 @@ export class NetworkManager {
         if (peerKey) {
           this._handleGuestPeerDisconnected(peerKey);
         }
+        break;
+      }
+
+      case 'NET_PING': {
+        this._sendControlMessage({
+          type: 'NET_PONG',
+          ts: msg.ts,
+          targetClientId: msg.senderClientId,
+        });
+        break;
+      }
+
+      case 'NET_PONG': {
+        if (msg.targetClientId && msg.targetClientId !== this._localClientId) break;
+        const nowTs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const rtt = Math.max(10, Math.min(450, nowTs - (Number(msg.ts) || nowTs)));
+        this.estimatedRttMs = this.estimatedRttMs * 0.6 + rtt * 0.4;
+        this.oneWayLatencySec = Math.max(0.015, Math.min(0.16, (this.estimatedRttMs * 0.5) / 1000));
         break;
       }
 
@@ -1686,6 +1723,10 @@ export class NetworkManager {
     if (this._httpRelayTimer) {
       clearInterval(this._httpRelayTimer);
       this._httpRelayTimer = null;
+    }
+    if (this._pingTimer) {
+      clearInterval(this._pingTimer);
+      this._pingTimer = null;
     }
     this._seenControlMsgIds.clear();
     this.active = false;
