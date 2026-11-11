@@ -5,8 +5,8 @@
  *  - Mode Spectateur (Plein écran 100%, masquage des compteurs joueurs, bandeau large en bas d'écran)
  *  - Mini-carte temps réel (jusqu'à 7 véhicules) et Écran de Classement Final avec accès Spectateur.
  */
-import { CONFIG } from '../config.js?v=41';
-import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=41';
+import { CONFIG } from '../config.js?v=42';
+import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=42';
 import * as THREE from 'three';
 
 const _hudFwd = new THREE.Vector3();
@@ -50,6 +50,7 @@ export class HUDController {
         rankNum: document.getElementById(`p${p}-rank`),
         rankTotal: document.getElementById(`p${p}-rank-total`),
         wrongWay: document.getElementById(`p${p}-wrong-way`),
+        humiliationBanner: document.getElementById(`p${p}-humiliation`),
         finishedBanner: document.getElementById(`p${p}-finished`),
         windBox: document.getElementById(`p${p}-wind-box`),
         windArrow: document.getElementById(`p${p}-wind-arrow`),
@@ -59,6 +60,8 @@ export class HUDController {
 
     this.playerCount = 2;
     this.isSpectator = false;
+    this._humiliationUntil = [0, 0];
+    this._humiliationTexts = ['', ''];
     this.countdownEl = document.getElementById('race-countdown');
     this.envBadgeEl = document.getElementById('hud-env-badge');
     this.minimapCanvas = document.getElementById('minimap-canvas');
@@ -143,9 +146,17 @@ export class HUDController {
       ui.lapText.textContent = `1 / ${totalLaps}`;
       ui.lapTime.textContent = '0:00.000';
       ui.wrongWay.classList.add('hidden');
+      if (ui.humiliationBanner) {
+        ui.humiliationBanner.textContent = '';
+        ui.humiliationBanner.classList.add('hidden');
+      }
       ui.finishedBanner.classList.add('hidden');
       ui.cpBonus.classList.remove('visible', 'type-boost', 'type-super', 'type-slowdown');
     }
+    this._humiliationUntil[0] = 0;
+    this._humiliationUntil[1] = 0;
+    this._humiliationTexts[0] = '';
+    this._humiliationTexts[1] = '';
     const tbody = document.getElementById('results-tbody');
     if (tbody) tbody.innerHTML = '';
   }
@@ -159,6 +170,21 @@ export class HUDController {
 
   hideCountdown() {
     if (this.countdownEl) this.countdownEl.classList.add('hidden');
+  }
+
+  /**
+   * Affiche le message d'humiliation sur le HUD d'un joueur humain encore en course.
+   */
+  showHumiliation(message, panelIndex = 0, duration = 4.5) {
+    const idx = panelIndex === 1 ? 1 : 0;
+    const nowSec = (typeof performance !== 'undefined' ? performance.now() : Date.now()) * 0.001;
+    this._humiliationTexts[idx] = message;
+    this._humiliationUntil[idx] = nowSec + duration;
+    const ui = this.panels[idx];
+    if (ui && ui.humiliationBanner) {
+      ui.humiliationBanner.textContent = message;
+      ui.humiliationBanner.classList.remove('hidden');
+    }
   }
 
   /**
@@ -313,6 +339,17 @@ export class HUDController {
         ui.finishedBanner.classList.remove('hidden');
       } else {
         ui.finishedBanner.classList.add('hidden');
+      }
+
+      if (ui.humiliationBanner) {
+        const nowSec = (typeof performance !== 'undefined' ? performance.now() : Date.now()) * 0.001;
+        const showHum = !v.finished && this._humiliationUntil[i] > nowSec && this._humiliationTexts[i];
+        if (showHum) {
+          ui.humiliationBanner.textContent = this._humiliationTexts[i];
+          ui.humiliationBanner.classList.remove('hidden');
+        } else {
+          ui.humiliationBanner.classList.add('hidden');
+        }
       }
     }
 

@@ -13,18 +13,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS, computeRankBoostBonus } from '../config.js?v=41';
-import { TrackLayout } from '../track/trackLayout.js?v=41';
-import { TrackBuilder } from '../track/trackBuilder.js?v=41';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=41';
-import { Vehicle } from '../physics/vehicle.js?v=41';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=41';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=41';
-import { ParticleSystem } from '../gfx/particles.js?v=41';
-import { WeatherSystem } from '../gfx/weather.js?v=41';
-import { soundManager } from '../core/audio.js?v=41';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=41';
-import { clamp } from '../core/utils.js?v=41';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS, computeRankBoostBonus } from '../config.js?v=42';
+import { TrackLayout } from '../track/trackLayout.js?v=42';
+import { TrackBuilder } from '../track/trackBuilder.js?v=42';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=42';
+import { Vehicle } from '../physics/vehicle.js?v=42';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=42';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=42';
+import { ParticleSystem } from '../gfx/particles.js?v=42';
+import { WeatherSystem } from '../gfx/weather.js?v=42';
+import { soundManager } from '../core/audio.js?v=42';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=42';
+import { clamp } from '../core/utils.js?v=42';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();
@@ -105,6 +105,7 @@ export class RaceScene {
     this._envContext = { weather: 'sunny', globalGrip: 1.0 };
     this._activeCameras1 = [this.cam1.camera.position];
     this._activeCameras2 = [this.cam1.camera.position, this.cam2.camera.position];
+    this._shelteredFlags = [false, false];
     this._singleAudioTarget = [null];
     this._spectatorInfoOut = { target: null, canShowResults: false };
 
@@ -171,6 +172,13 @@ export class RaceScene {
           v.finishTime = msg.finishTime || this.raceTime;
           v.finishCrossingPos.copy(v.chassisBody.position);
           this._updateStandings();
+        }
+        if (msg.humiliation && !v._humiliationShown) {
+          v._humiliationShown = true;
+          if (this.localPlayer && !this.localPlayer.isAI && !this.localPlayer.finished) {
+            const tag = msg.playerName || v.displayTag || v.name || 'Un joueur';
+            this.hud.showHumiliation(`${tag} vous a humilié`, 0, 4.5);
+          }
         }
       }
     }
@@ -1388,10 +1396,17 @@ export class RaceScene {
     }
     this.particles.update(dt);
 
-    const activeCameras = (!this.isOnline && !this.isSpectator && this.playerCount === 2)
-      ? this._activeCameras2
-      : this._activeCameras1;
-    this.weatherSystem.update(dt, activeCameras);
+    const isSplit2P = !this.isOnline && !this.isSpectator && this.playerCount === 2;
+    const activeCameras = isSplit2P ? this._activeCameras2 : this._activeCameras1;
+    if (isSplit2P) {
+      this._shelteredFlags[0] = this._isViewportUnderCover(this.players[0], this.cam1.camera.position);
+      this._shelteredFlags[1] = this._isViewportUnderCover(this.players[1], this.cam2.camera.position);
+    } else {
+      const targetVeh = this.isSpectator ? this.spectatorTarget : (this.localPlayer || this.players[0]);
+      this._shelteredFlags[0] = this._isViewportUnderCover(targetVeh, this.cam1.camera.position);
+      this._shelteredFlags[1] = false;
+    }
+    this.weatherSystem.update(dt, activeCameras, this._shelteredFlags);
 
     if (this.isSpectator && this.spectatorTarget) {
       this._singleAudioTarget[0] = this.spectatorTarget;
@@ -1404,9 +1419,20 @@ export class RaceScene {
     }
 
     // 6) Classement temps réel, étiquettes de pseudos 3D -> 2D et détection de fin de course
+    if (!this.isOnline && !this.isSpectator) {
+      for (let i = 0; i < this.players.length; i++) {
+        const p = this.players[i];
+        if (p && p.humiliationPending) {
+          p.humiliationPending = false;
+          this._broadcastLocalHumiliation(p);
+        }
+      }
+    }
     if (this.isOnline && this.localPlayer && this.network) {
       const me = this.localPlayer;
       const bestLapNow = isFinite(me.bestLapTime) ? me.bestLapTime : 0;
+      const humiliationNow = Boolean(me.finished && me.finishedInReverse);
+      if (me.humiliationPending) me.humiliationPending = false;
       if (
         me.lap > (me._lastSyncedLap || 1)
         || (me.finished && !me._lastSyncedFinished)
@@ -1418,10 +1444,12 @@ export class RaceScene {
         this.network.sendRaceEvent({
           event: 'LAP_OR_FINISH',
           slotIndex: this.myOnlineSlot,
+          playerName: me.displayTag || me.name || 'Un joueur',
           lap: me.lap,
           finished: Boolean(me.finished),
           finishTime: me.finishTime || 0,
           bestLapTime: bestLapNow,
+          humiliation: humiliationNow,
         });
       }
     }
@@ -1432,6 +1460,31 @@ export class RaceScene {
 
     if (this.state === 'racing') {
       this._checkRaceEnd();
+    }
+  }
+
+  _isViewportUnderCover(vehicle, camPos) {
+    const L = this.layout;
+    if (!L || !L.isUnderCover) return false;
+    if (vehicle && vehicle.chassisBody) {
+      const p = vehicle.chassisBody.position;
+      if (L.isUnderCover(p.x, p.y, p.z, vehicle.trackIndex)) return true;
+    }
+    if (camPos && L.isUnderCover(camPos.x, camPos.y, camPos.z, vehicle ? vehicle.trackIndex : -1)) {
+      return true;
+    }
+    return false;
+  }
+
+  _broadcastLocalHumiliation(finisher) {
+    if (!finisher) return;
+    const tag = finisher.displayTag || finisher.name || 'Un joueur';
+    const text = `${tag} vous a humilié`;
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i];
+      if (p && p !== finisher && !p.isAI && !p.finished) {
+        this.hud.showHumiliation(text, i, 4.5);
+      }
     }
   }
 

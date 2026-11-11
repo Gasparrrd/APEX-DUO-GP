@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=41';
-import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=41';
+import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=42';
+import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=42';
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();

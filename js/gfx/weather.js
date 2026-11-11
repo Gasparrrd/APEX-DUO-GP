@@ -11,7 +11,7 @@
  *    pour simuler les reflets d'une chaussée détrempée.
  */
 import * as THREE from 'three';
-import { CONFIG, WEATHER_MODIFIERS } from '../config.js?v=41';
+import { CONFIG, WEATHER_MODIFIERS } from '../config.js?v=42';
 
 const BOX_WIDTH = 60;   // Largeur X du volume centré caméra (m)
 const BOX_HEIGHT = 40;  // Hauteur Y du volume centré caméra (m)
@@ -25,6 +25,7 @@ export class WeatherSystem {
     this.lights = lights; // { sun, hemi }
     this.requestedWeather = 'sunny';
     this.activeWeather = 'sunny';
+    this.baseRainOpacity = 0.54;
     this.windTime = 0;
 
     this._buildCameraRainVolumes();
@@ -76,17 +77,21 @@ export class WeatherSystem {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
 
-      const mesh = new THREE.LineSegments(geometry, this.rainMat);
+      const mat = this.rainMat.clone();
+      const mesh = new THREE.LineSegments(geometry, mat);
       mesh.frustumCulled = false;
       mesh.visible = v === 0;
       this.rainGroup.add(mesh);
 
       this.volumes.push({
         mesh,
+        material: mat,
         geometry,
         drops,
         lastCamPos: new THREE.Vector3(),
         initialized: false,
+        isSheltered: false,
+        shelterFade: 1.0,
         halfW,
         halfH,
         halfD,
@@ -139,10 +144,14 @@ export class WeatherSystem {
     }
 
     this.rainGroup.visible = isWet;
-    this.rainMat.opacity = this.activeWeather === 'storm' ? 0.68 : 0.54;
+    this.baseRainOpacity = this.activeWeather === 'storm' ? 0.68 : 0.54;
+    this.rainMat.opacity = this.baseRainOpacity;
 
     for (const vol of this.volumes) {
       vol.initialized = false;
+      vol.isSheltered = false;
+      vol.shelterFade = 1.0;
+      if (vol.material) vol.material.opacity = this.baseRainOpacity;
     }
 
     return this.activeWeather;
@@ -150,12 +159,14 @@ export class WeatherSystem {
 
   /**
    * Sélectionne le volume de pluie correspondant au viewport en cours de rendu
-   * (0 = écran principal / joueur 1, 1 = écran droit / joueur 2 en écran scindé).
+   * (0 = écran principal / joueur 1, 1 = écran droit / joueur 2 en écran scindé),
+   * et masque la pluie lorsque ce viewport passe sous un pont, un tunnel ou une structure.
    */
   prepareForViewport(viewportIndex = 0) {
     if (!this.rainGroup.visible) return;
     for (let i = 0; i < this.volumes.length; i++) {
-      this.volumes[i].mesh.visible = (i === viewportIndex);
+      const vol = this.volumes[i];
+      vol.mesh.visible = (i === viewportIndex) && (vol.shelterFade > 0.02);
     }
   }
 
@@ -166,8 +177,9 @@ export class WeatherSystem {
    *
    * @param {number} dt
    * @param {Array<THREE.Camera|THREE.Vector3>} cameraAnchors
+   * @param {Array<boolean>|null} [shelteredFlags]
    */
-  update(dt, cameraAnchors) {
+  update(dt, cameraAnchors, shelteredFlags = null) {
     if (!this.rainGroup.visible || !cameraAnchors) return;
 
     const list = Array.isArray(cameraAnchors) ? cameraAnchors : [cameraAnchors];
@@ -198,6 +210,17 @@ export class WeatherSystem {
       if (!anchor) continue;
       const camPos = anchor.position || anchor;
       const vol = this.volumes[vIdx];
+
+      const sheltered = Array.isArray(shelteredFlags) ? Boolean(shelteredFlags[vIdx]) : false;
+      vol.isSheltered = sheltered;
+      const targetFade = sheltered ? 0.0 : 1.0;
+      const fadeRate = sheltered ? 22.0 : 12.0;
+      vol.shelterFade += (targetFade - vol.shelterFade) * (1 - Math.exp(-fadeRate * dt));
+      if (sheltered && vol.shelterFade < 0.025) vol.shelterFade = 0;
+      else if (!sheltered && vol.shelterFade > 0.98) vol.shelterFade = 1;
+      if (vol.material) {
+        vol.material.opacity = this.baseRainOpacity * vol.shelterFade;
+      }
 
       if (!vol.initialized) {
         vol.lastCamPos.copy(camPos);

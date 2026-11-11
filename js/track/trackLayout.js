@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=41';
-import { clamp, wrap } from '../core/utils.js?v=41';
+import { CONFIG } from '../config.js?v=42';
+import { clamp, wrap } from '../core/utils.js?v=42';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [
@@ -97,35 +97,36 @@ export const TRACK_POINTS_LAKE = [
 ];
 
 /**
- * Circuit 5 : "Le Col de la Grotte" (Mountain Pass & Under-tunnel) — Format XL (longueur x1,5 / hauteur x2) [x, y, z] :
+ * Circuit 5 : "Le Col de la Grotte" (Mountain Pass & Under-tunnel) — Format XL (verticalité +20%, jusqu'à +85,4m) [x, y, z] :
  *  1. Grande Ligne Droite (Départ/Arrivée) au niveau du sol (Y = 0) longeant le canyon Sud (z = 540)
- *  2. Ascension & Épingles de la Montagne Est (lacets serrés et chicanes à flanc de falaise, Y grimpe jusqu'à +71m)
- *  3. Piste Supérieure sur la crête rocheuse sommitale (Y = 71.2m, z = -52.5) avec glissières doublées et vue plongeante
- *  4. Grande descente rapide sur le versant Nord-Ouest plongeant vers l'entrée Nord du tunnel (Y -> 0.5m)
- *  5. Piste Inférieure & Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m) passant 70m EN DESSOUS de la crête sommitale
- *  6. Grand Pont / Viaduc à arches (x = 0, z de +78 à +186, Y culmine à 13.6m) enjambant la rivière animée du canyon avant le retour départ
+ *  2. Ascension & Épingles de la Montagne Est (lacets serrés et chicanes à flanc de falaise, Y grimpe jusqu'à +85.4m)
+ *  3. Piste Supérieure sur la crête rocheuse sommitale (Y = 85.4m, z = -52.5) avec glissières doublées et vue plongeante
+ *  4. Grande descente rapide & virage large Nord-Ouest, puis enchaînement technique ajouté avant le tunnel
+ *  5. Piste Inférieure & Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m) passant 85m EN DESSOUS de la crête sommitale
+ *  6. Grand Pont / Viaduc à arches (x = 0, z de +78 à +186, Y culmine à 16.3m) enjambant la rivière animée du canyon avant le retour départ
  */
 export const TRACK_POINTS_GROTTO = [
-  // 1. Très Grande Ligne Droite du Canyon Sud (Départ / Arrivée à Y = 0, z = 540, ~825 m de pleine vitesse)
+  // 1. Très Grande Ligne Droite du Canyon Sud (Départ / Arrivée à Y = 0, z = 540)
   [-255, 0.0, 540], [-98, 0.0, 540], [68, 0.0, 540], [232, 0.0, 540], [398, 0.0, 540],
-  // 2. Grande Courbe Est & L'Ascension des Lacets Alpins (Y grimpe progressivement de 0 à +71.0m)
-  [532, 3.6, 516], [652, 10.4, 429], [723, 19.0, 297], [693, 27.6, 162],
-  [573, 35.0, 93], [492, 41.6, 6], [537, 48.0, -87],           // Épingle alpine 1 & corniche de falaise
-  [663, 54.4, -156], [732, 60.4, -252], [672, 65.6, -351],    // Grande boucle orientale & Épingle 2
-  [532, 68.8, -363], [387, 70.0, -285], [288, 70.6, -162], [207, 71.0, -78],
-  // 3. La Piste Supérieure (Crête rocheuse sommitale à Y = 71.2m, passant 70m AU-DESSUS du tunnel en (0, -52.5))
-  [123, 71.2, -54], [60, 71.2, -52.5], [0, 71.2, -52.5], [-60, 71.2, -52.5], [-123, 71.2, -54], [-207, 70.6, -66],
-  // 4. Grande Descente Rapide & Vallée Nord-Ouest Haute Vitesse (Y plonge de 70.6m à 0.5m)
-  [-327, 62.8, -102], [-468, 50.4, -162], [-608, 37.0, -231],
-  [-708, 24.4, -333], [-723, 14.0, -453], [-633, 6.8, -552],
-  [-483, 3.2, -582], [-308, 1.8, -552], [-158, 1.2, -477],
-  [-48, 0.5, -366], [0, 0.5, -249],
-  // 5. La Piste Inférieure & Le Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m, soit 70m SOUS la crête !)
+  // 2. Grande Courbe Est & L'Ascension des Lacets Alpins (verticalité +20% : Y grimpe de 0 à +85.2m)
+  [532, 4.3, 516], [652, 12.5, 429], [723, 22.8, 297], [693, 33.1, 162],
+  [573, 42.0, 93], [492, 49.9, 6], [537, 57.6, -87],           // Épingle alpine 1 & corniche de falaise
+  [663, 65.3, -156], [732, 72.5, -252], [672, 78.7, -351],    // Grande boucle orientale & Épingle 2
+  [532, 82.6, -363], [387, 84.0, -285], [288, 84.7, -162], [207, 85.2, -78],
+  // 3. La Piste Supérieure (Crête rocheuse sommitale à Y = 85.4m, passant 85m AU-DESSUS du tunnel en (0, -52.5))
+  [123, 85.4, -54], [60, 85.4, -52.5], [0, 85.4, -52.5], [-60, 85.4, -52.5], [-123, 85.4, -54], [-207, 84.7, -66],
+  // 4. Grande Descente Rapide & Virage Large Nord-Ouest (Y plonge de 84.7m à 2.2m)
+  [-327, 75.4, -102], [-468, 60.5, -162], [-608, 44.4, -231],
+  [-708, 29.3, -333], [-723, 16.8, -453], [-633, 8.2, -552],
+  [-483, 3.8, -582], [-308, 2.2, -552],
+  // 4b. Virage ajouté entre le virage large Nord-Ouest et le passage en dessous de la montagne / pont
+  [-205, 1.6, -510], [-145, 1.2, -455], [-60, 0.9, -425], [48, 0.6, -390], [82, 0.5, -322], [35, 0.5, -252], [0, 0.5, -198],
+  // 5. La Piste Inférieure & Le Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m, soit 85m SOUS la crête !)
   [0, 0.5, -158], [0, 0.5, -90], [0, 0.5, -30], [0, 0.5, 33],
-  // 6. Le Grand Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +78 à +186, Y culmine à 13.6m)
-  [0, 6.8, 78], [0, 13.6, 132], [0, 8.0, 186],
-  // 7. Grande Enchaînement Sud-Ouest du Canyon & Retour Ligne Droite (large rayon fluide vers z = 540)
-  [-48, 3.2, 249], [-159, 1.2, 291], [-312, 0.4, 306], [-474, 0.0, 321],
+  // 6. Le Grand Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +78 à +186, Y culmine à 16.3m)
+  [0, 8.2, 78], [0, 16.3, 132], [0, 9.6, 186],
+  // 7. Grand Enchaînement Sud-Ouest du Canyon & Retour Ligne Droite (large rayon fluide vers z = 540)
+  [-48, 3.8, 249], [-159, 1.4, 291], [-312, 0.5, 306], [-474, 0.0, 321],
   [-606, 0.0, 372], [-648, 0.0, 453], [-573, 0.0, 519], [-428, 0.0, 540],
 ];
 
@@ -261,6 +262,41 @@ export class TrackLayout {
 
     this._computeRacingLine();
     this._computeSpeedProfile();
+    this._computeUnderCover();
+  }
+
+  /**
+   * Précalcule les zones couvertes par un pont, un tunnel ou une portion de piste supérieure
+   * afin d'interrompre la pluie sur n'importe quel circuit dès qu'un véhicule passe dessous.
+   */
+  _computeUnderCover() {
+    const n = this.count;
+    const pts = this.points;
+    const coverRadius = this.barrierDistance + 4.5;
+    const coverRadiusSq = coverRadius * coverRadius;
+    const minSepSteps = Math.max(8, Math.round(30 / (this.ds || 2)));
+    this.underCover = new Uint8Array(n);
+
+    for (let i = 0; i < n; i++) {
+      const p = pts[i];
+      if (this.isInTunnel(p.x, p.y, p.z)) {
+        this.underCover[i] = 1;
+        continue;
+      }
+      for (let j = 0; j < n; j += 2) {
+        const diff = Math.abs(i - j);
+        const loopDiff = Math.min(diff, n - diff);
+        if (loopDiff < minSepSteps) continue;
+        const q = pts[j];
+        if (q.y - p.y < 4.0) continue;
+        const dx = p.x - q.x;
+        const dz = p.z - q.z;
+        if (dx * dx + dz * dz <= coverRadiusSq) {
+          this.underCover[i] = 1;
+          break;
+        }
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -386,6 +422,32 @@ export class TrackLayout {
       return Math.abs(x) <= 16.0 && Math.abs(z) <= 14.0 && y <= 5.5;
     }
     return false;
+  }
+
+  /**
+   * Indique si une position 3D `(x, y, z)` est abritée sous un pont, un tunnel ou une structure
+   * (sur n'importe quelle map), pour couper dynamiquement la pluie sous l'ouvrage.
+   */
+  isUnderCover(x, y, z, hint = -1) {
+    if (this.isInTunnel(x, y, z)) return true;
+
+    // Volumes directs sous les tabliers de ponts connus (même en bordure ou hors trajectoire)
+    if (this.circuitId === 'valley' && Math.abs(x) <= 15.5 && Math.abs(z) <= 84.0 && y <= 12.2) {
+      return true;
+    }
+    if (this.circuitId === 'grotto' && Math.abs(x) <= 15.5 && z >= 70.0 && z <= 192.0 && y <= 6.2) {
+      return true;
+    }
+
+    if (!this.underCover) return false;
+    const idx = this.findNearestIndex(x, z, hint, 45, y);
+    if (idx < 0 || !this.underCover[idx]) return false;
+
+    const p = this.points[idx];
+    const maxR = this.barrierDistance + 4.5;
+    const dx = x - p.x;
+    const dz = z - p.z;
+    return (dx * dx + dz * dz <= maxR * maxR) && Math.abs(y - p.y) <= 8.5;
   }
 
   project(x, z, hint = -1, yOrOut = undefined, maybeOut = undefined) {

@@ -11,11 +11,11 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=41';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=41';
-import { soundManager } from '../core/audio.js?v=41';
-import { CarModel } from '../gfx/carModel.js?v=41';
-import { blobShadowTexture } from '../gfx/textures.js?v=41';
+import { CONFIG, computeVehicleStats } from '../config.js?v=42';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=42';
+import { soundManager } from '../core/audio.js?v=42';
+import { CarModel } from '../gfx/carModel.js?v=42';
+import { blobShadowTexture } from '../gfx/textures.js?v=42';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;
@@ -239,6 +239,8 @@ export class Vehicle {
     this.bestLapTime = Infinity;
     this.finishTime = 0;
     this.finished = false;
+    this.finishedInReverse = false;
+    this.humiliationPending = false;
 
     // Freinage automatique propre à +10..15m après la ligne d'arrivée & frein de parking verrouillé
     this.postFinishDistance = 0;
@@ -463,6 +465,8 @@ export class Vehicle {
       this.bestLapTime = Infinity;
       this.finishTime = 0;
       this.finished = false;
+      this.finishedInReverse = false;
+      this.humiliationPending = false;
       this.postFinishDistance = 0;
       this.postFinishTargetDistance = 12.0;
       this.finishCrossingPos.copy(position);
@@ -1005,7 +1009,8 @@ export class Vehicle {
     this.inTunnel = Boolean(L.isInTunnel && L.isInTunnel(body.position.x, body.position.y, body.position.z));
 
     const t = L.tangents[this.trackIndex];
-    this.getForwardVector(_fwd);
+    _physQuat.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+    _fwd.set(0, 0, -1).applyQuaternion(_physQuat);
     const alignment = _fwd.x * t.x + _fwd.z * t.z;
 
     if (alignment < -0.35 && this.forwardSpeed > 2.5) {
@@ -1031,7 +1036,9 @@ export class Vehicle {
       // Empêche toute validation par erreur lors du croisement pont/tunnel ou crête/tunnel
       const deltaY = Math.abs(body.position.y - cpY);
       const deltaS = wrapDelta(this.trackS, targetS, L.length);
-      if (Math.abs(deltaS) < 22 && deltaY <= 5.0 && alignment > 0.1) {
+      const velAlongTrack = body.velocity.x * t.x + body.velocity.z * t.z;
+      const movingForwardAlongTrack = alignment > 0.1 || velAlongTrack > 0.5;
+      if (Math.abs(deltaS) < 22 && deltaY <= 5.0 && movingForwardAlongTrack) {
         this.checkpointsPassed++;
         this.nextCheckpoint = (this.nextCheckpoint + 1) % numCP;
       }
@@ -1039,7 +1046,9 @@ export class Vehicle {
       const crossing = L.checkFinishLineCrossing(this.prevPhysicsPos, this.currPhysicsPos);
       const finishY = L.points[0] ? L.points[0].y : 0;
       const deltaFinishY = Math.abs(body.position.y - finishY);
-      if (crossing.crossed && deltaFinishY <= 5.0 && alignment > 0.1) {
+      // Accepte le passage de ligne même en marche arrière tant que tous les checkpoints sont validés
+      // et que le déplacement franchit la ligne dans le sens du tracé (checkFinishLineCrossing).
+      if (crossing.crossed && deltaFinishY <= 5.0) {
         const exactTime = Math.max(0, raceTime - dt * (1 - crossing.fraction));
         this.checkpointsPassed++;
 
@@ -1049,7 +1058,10 @@ export class Vehicle {
         this.currentLapTime = 0;
 
         if (this.lap >= this.totalLaps) {
+          const isReverseFinish = (alignment < -0.25) || (this.forwardSpeed < -0.8 && alignment < 0.25);
           this.finished = true;
+          this.finishedInReverse = isReverseFinish;
+          this.humiliationPending = isReverseFinish;
           this.finishTime = exactTime;
           this.postFinishDistance = 0;
           const slotOffset = this.id === 'p2' ? 2.0 : this.isAI ? 3.2 : 0;

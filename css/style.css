@@ -879,6 +879,21 @@ kbd {
   letter-spacing: 0.06em;
 }
 
+.humiliation-banner {
+  align-self: center;
+  background: linear-gradient(135deg, rgba(183, 28, 28, 0.94), rgba(255, 111, 0, 0.92));
+  border: 2.5px solid #ffd54f;
+  color: #fffde7;
+  padding: 12px 26px;
+  border-radius: 14px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-align: center;
+  box-shadow: 0 0 32px rgba(255, 111, 0, 0.72);
+  animation: pulseAlert 0.45s infinite alternate;
+}
+
 .hud-bottom-cluster {
   display: flex;
   align-items: flex-end;

@@ -9,9 +9,9 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CarModel, GROUND_OFFSET } from '../gfx/carModel.js?v=41';
-import { garageFloorTexture, blobShadowTexture } from '../gfx/textures.js?v=41';
-import { DEFAULT_PLAYER_CARS } from '../config.js?v=41';
+import { CarModel, GROUND_OFFSET } from '../gfx/carModel.js?v=42';
+import { garageFloorTexture, blobShadowTexture } from '../gfx/textures.js?v=42';
+import { DEFAULT_PLAYER_CARS } from '../config.js?v=42';
 
 const _anchor3D = new THREE.Vector3();
 

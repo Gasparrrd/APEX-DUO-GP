@@ -9,13 +9,13 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=41';
-import { seededRandom, wrap } from '../core/utils.js?v=41';
+import { CONFIG } from '../config.js?v=42';
+import { seededRandom, wrap } from '../core/utils.js?v=42';
 import {
   asphaltTexture, grassTexture, curbTexture, checkerTexture,
   blobShadowTexture, billboardTexture, chevronTexture,
   distanceBoardTexture, gantryTexture,
-} from '../gfx/textures.js?v=41';
+} from '../gfx/textures.js?v=42';
 
 export class TrackBuilder {
   /**
@@ -160,7 +160,7 @@ export class TrackBuilder {
         (Math.abs(p.x) < 16 && p.z >= -156 && p.z <= 36 && p.y < 16) ||
         (Math.abs(p.x) < 16 && p.z >= 70 && p.z <= 192)
       );
-      const isGrottoRidge = L.circuitId === 'grotto' && Math.abs(p.x) < 78 && p.z > -98 && p.z < -8 && p.y > 46;
+      const isGrottoRidge = L.circuitId === 'grotto' && Math.abs(p.x) < 78 && p.z > -98 && p.z < -8 && p.y > 55;
       if (isGrottoBridgeOrTunnel) {
         shLeft = hw + 1.1;
         shRight = hw + 1.1;
@@ -401,7 +401,7 @@ export class TrackBuilder {
 
         const isOnBridgeSpan = (L.circuitId === 'valley' && Math.abs(p.x) < 35 && Math.abs(p.z) < 84 && p.y > 9.0)
           || (L.circuitId === 'grotto' && (
-            (Math.abs(p.x) < 78 && p.z > -102 && p.z < -4 && p.y > 42.0) ||
+            (Math.abs(p.x) < 78 && p.z > -102 && p.z < -4 && p.y > 50.0) ||
             (Math.abs(p.x) < 20 && p.z >= -160 && p.z <= 38 && p.y < 18.0) ||
             (Math.abs(p.x) < 20 && p.z >= 66 && p.z <= 198)
           ));
@@ -1557,41 +1557,41 @@ export class TrackBuilder {
     const mossMat = new THREE.MeshLambertMaterial({ color: 0x41563c, flatShading: true });
     const snowMat = new THREE.MeshLambertMaterial({ color: 0xf0f5fa, flatShading: true });
 
-    // Cœur rocheux trapézoïdal (enveloppant la voûte du tunnel sans l'obstruer, soutenant la crête à Y = 71m)
-    const ridgeCoreGeo = new THREE.CylinderGeometry(22, 38, 53.0, 6);
+    // Cœur rocheux trapézoïdal (enveloppant la voûte du tunnel sans l'obstruer, soutenant la crête à Y = 85.4m)
+    const ridgeCoreGeo = new THREE.CylinderGeometry(22, 38, 67.2, 6);
     ridgeCoreGeo.scale(2.5, 1.0, 2.4);
     const ridgeCore = new THREE.Mesh(ridgeCoreGeo, rockMat);
-    ridgeCore.position.set(0, 41.0, zMid);
+    ridgeCore.position.set(0, 48.2, zMid);
     group.add(ridgeCore);
 
     // Massifs rocheux latéraux en pente douce de part et d'autre du tunnel (totalement hors de la voûte)
-    const sideSlopeGeo = new THREE.CylinderGeometry(14, 24, 31.0, 7);
+    const sideSlopeGeo = new THREE.CylinderGeometry(14, 24, 37.0, 7);
     sideSlopeGeo.scale(1.05, 1.0, 3.0);
     for (const side of [-1, 1]) {
       const sideCliff = new THREE.Mesh(sideSlopeGeo, darkSlopeMat);
-      sideCliff.position.set(side * (tunnelRadius + 27.5), 15.0, zMid);
+      sideCliff.position.set(side * (tunnelRadius + 27.5), 18.0, zMid);
       group.add(sideCliff);
     }
 
-    // Flancs rocheux Est et Ouest bien ancrés dans la montagne (hauteur x2 : aucun rocher flottant !)
+    // Flancs rocheux Est et Ouest bien ancrés dans la montagne (verticalité +20% : aucun rocher flottant)
     const flankGeo = new THREE.ConeGeometry(1, 1, 7);
     flankGeo.translate(0, 0.5, 0);
     const flankDefs = [
-      [-60, -0.5, -108, 36, 66.5, rockMat],
-      [60, -0.5, -108, 36, 66.5, rockMat],
-      [-66, -0.5, -57, 39, 67.2, mossMat],
-      [66, -0.5, -57, 39, 67.2, mossMat],
-      [-60, -0.5, -6, 36, 65.5, rockMat],
-      [60, -0.5, -6, 36, 65.5, rockMat],
-      [-36, -0.5, -93, 25, 66.0, mossMat],
-      [36, -0.5, -93, 25, 66.0, mossMat],
-      [-36, -0.5, -21, 25, 65.5, rockMat],
-      [36, -0.5, -21, 25, 65.5, rockMat],
+      [-60, -0.5, -108, 36, 80.0, rockMat],
+      [60, -0.5, -108, 36, 80.0, rockMat],
+      [-66, -0.5, -57, 39, 81.2, mossMat],
+      [66, -0.5, -57, 39, 81.2, mossMat],
+      [-60, -0.5, -6, 36, 79.0, rockMat],
+      [60, -0.5, -6, 36, 79.0, rockMat],
+      [-36, -0.5, -93, 25, 79.5, mossMat],
+      [36, -0.5, -93, 25, 79.5, mossMat],
+      [-36, -0.5, -21, 25, 79.0, rockMat],
+      [36, -0.5, -21, 25, 79.0, rockMat],
       // Grands pics alpins enneigés dans les 4 quadrants hors de la piste supérieure (z = -52.5) et du tunnel (|x| <= 20)
-      [-57, 0.0, -114, 33, 108, rockMat],
-      [57, 0.0, -114, 33, 112, rockMat],
-      [-57, 0.0, 3, 31, 100, rockMat],
-      [57, 0.0, 3, 31, 104, rockMat],
+      [-57, 0.0, -114, 33, 128, rockMat],
+      [57, 0.0, -114, 33, 134, rockMat],
+      [-57, 0.0, 3, 31, 120, rockMat],
+      [57, 0.0, 3, 31, 125, rockMat],
     ];
     for (const [fx, fy, fz, rad, h, mat] of flankDefs) {
       const m = new THREE.Mesh(flankGeo, mat);
@@ -1600,7 +1600,7 @@ export class TrackBuilder {
       m.rotation.y = (fx + fz) * 0.1;
       group.add(m);
 
-      if (fy + h > 90) {
+      if (fy + h > 108) {
         const cap = new THREE.Mesh(flankGeo, snowMat);
         cap.position.set(fx, fy + h * 0.62, fz);
         cap.scale.set(rad * 0.42, h * 0.40, rad * 0.42);
@@ -1620,9 +1620,9 @@ export class TrackBuilder {
       const sy = 5.5 + rndMtn() * 7.0;
       const sz = 6.5 + rndMtn() * 8.5;
       const distToUpperRoadZ = Math.abs(bz - (-52.5));
-      const maxTopY = distToUpperRoadZ < (this.layout.barrierDistance + sz + 11.0) ? 66.0 : 74.0;
-      const by = Math.min(maxTopY - sy, 31.0 + rndMtn() * 28.0);
-      const mat = by + sy > 67.6 ? snowMat : (rndMtn() > 0.45 ? rockMat : mossMat);
+      const maxTopY = distToUpperRoadZ < (this.layout.barrierDistance + sz + 11.0) ? 79.0 : 89.0;
+      const by = Math.min(maxTopY - sy, 37.0 + rndMtn() * 34.0);
+      const mat = by + sy > 81.0 ? snowMat : (rndMtn() > 0.45 ? rockMat : mossMat);
       const rock = new THREE.Mesh(boulderGeo, mat);
       rock.position.set(bx, by, bz);
       rock.scale.set(sx, sy, sz);
@@ -1818,7 +1818,7 @@ export class TrackBuilder {
         for (let i = 0; i < n; i++) {
           const iNext = (i + 1) % n;
           const p0 = L.points[i], p1 = L.points[iNext];
-          if (p0.y < 36.0 && p1.y < 36.0) continue;
+          if (p0.y < 43.0 && p1.y < 43.0) continue;
 
           const r0 = L.rights[i], r1 = L.rights[iNext];
           const x0 = p0.x + r0.x * side * bd, z0 = p0.z + r0.z * side * bd;
@@ -2105,7 +2105,7 @@ export class TrackBuilder {
     const warnSigns = [
       [0.14, 1, 'VIRAGE DANGEREUX', '#b71c1c', '#ffffff', '#ffeb3b'],
       [0.24, -1, 'LACETS SERRÉS', '#e65100', '#ffffff', '#ffeb3b'],
-      [0.40, 1, 'CRÊTE · +71M', '#0d47a1', '#ffffff', '#00e5ff'],
+      [0.40, 1, 'CRÊTE · +85M', '#0d47a1', '#ffffff', '#00e5ff'],
       [0.69, 1, 'ATTENTION TUNNEL', '#1b222c', '#ffca28', '#ff6d00'],
       [0.83, -1, 'VIADUC DU CANYON', '#1b5e20', '#ffffff', '#ffca28'],
     ];
@@ -2179,8 +2179,8 @@ export class TrackBuilder {
         scl.setScalar(s);
         m4.compose(pos, quat, scl);
         firTransforms.push(m4.clone());
-        // Sapins plus clairs/enneigés en haute altitude (y > 48m)
-        firColors.push(y > 48 ? 0x607d6b : (rnd() > 0.5 ? 0x1e4628 : 0x275432));
+        // Sapins plus clairs/enneigés en haute altitude (y > 58m)
+        firColors.push(y > 58 ? 0x607d6b : (rnd() > 0.5 ? 0x1e4628 : 0x275432));
       }
     }
 

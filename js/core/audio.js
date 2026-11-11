@@ -15,7 +15,7 @@
  *         * Au ralenti (véhicule à l'arrêt), maintien d'un « rumble » grave et stable à basse fréquence (~40–50 Hz)
  *  3. Effets sonores de course : ramassage des jetons de boost (normal +25% / rare +40%), boost, dérapage, collisions.
  */
-import { clamp } from './utils.js?v=41';
+import { clamp } from './utils.js?v=42';
 
 export const LOBBY_MUSIC_URL = './salon.mp3';
 

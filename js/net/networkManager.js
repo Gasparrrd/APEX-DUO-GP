@@ -12,7 +12,7 @@
  *        positions (X, Y, Z), rotations (quaternion), vitesses, braquage et boost sans effet accordéon.
  */
 
-import { MAX_TOTAL_CARS } from '../config.js?v=41';
+import { MAX_TOTAL_CARS } from '../config.js?v=42';
 
 const PACKET_SNAPSHOT = 101;
 const PACKET_GUEST_INPUT = 102;

@@ -19,9 +19,9 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG, computeRankBoostBonus } from '../config.js?v=41';
-import { clamp } from '../core/utils.js?v=41';
-import { soundManager } from '../core/audio.js?v=41';
+import { CONFIG, computeRankBoostBonus } from '../config.js?v=42';
+import { clamp } from '../core/utils.js?v=42';
+import { soundManager } from '../core/audio.js?v=42';
 
 const B = CONFIG.boost;
 
