@@ -16,8 +16,8 @@ const PACKET_SNAPSHOT = 101;
 const PACKET_GUEST_INPUT = 102;
 const PACKET_GUEST_STATE = 103;
 const HEADER_FLOATS = 7;
-const VEHICLE_FLOATS = 16;
-const NET_TICK_RATE = 45;
+const VEHICLE_FLOATS = 18;
+const NET_TICK_RATE = 60;
 const NET_TICK_INTERVAL = 1 / NET_TICK_RATE;
 const MAX_ONLINE_PLAYERS = 4;
 
@@ -154,7 +154,7 @@ export class NetworkManager {
       this._snapshotBuffersByCount[c] = new Float32Array(HEADER_FLOATS + c * VEHICLE_FLOATS);
     }
     this._inputFloats = new Float32Array(8);
-    this._guestStateFloats = new Float32Array(19);
+    this._guestStateFloats = new Float32Array(20);
     this._rxGuestInputObj = { slotIndex: 1, throttle: 0, brake: 0, steer: 0, boost: false, reset: false };
     this._rxGuestStateObj = {
       slotIndex: 1,
@@ -162,7 +162,7 @@ export class NetworkManager {
       qx: 0, qy: 0, qz: 0, qw: 1,
       forwardSpeed: 0, steerAngle: 0, boostEnergy: 100,
       flags: 0, slowdownTimer: 0, lap: 1, progOrFinish: 0,
-      pickedTokenIdx: -1, lateralSpeed: 0,
+      pickedTokenIdx: -1, lateralSpeed: 0, yawRate: 0,
     };
   }
 
@@ -927,36 +927,39 @@ export class NetworkManager {
 
   _startLatencyProbe() {
     if (this._pingTimer) clearInterval(this._pingTimer);
-    this._pingTimer = setInterval(() => {
+    const sendPing = () => {
       if (!this.active || !this.connected) return;
       this._sendControlMessage({
         type: 'NET_PING',
+        senderClientId: this._localClientId,
         ts: typeof performance !== 'undefined' ? performance.now() : Date.now(),
       });
-    }, 2000);
+    };
+    sendPing();
+    this._pingTimer = setInterval(sendPing, 1000);
   }
 
   _sendFastBinary(floatArray) {
     if (!this.active) return;
     const buffer = floatArray.buffer;
-    this._reliableFallbackTick = (this._reliableFallbackTick + 1) % 3;
+    this._reliableFallbackTick = (this._reliableFallbackTick + 1) % 2;
 
     if (this.role === 'host') {
       for (const entry of this.guestPeers.values()) {
         const fast = entry.fastConn;
         if (fast && fast.open) {
           const dc = fast.dataChannel || fast._dc;
-          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 4096) {
+          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 16384) {
             continue;
           }
           try { fast.send(buffer); } catch (_) {}
           continue;
         }
-        // Fallback fiable limité à ~15 Hz tant que fastConn s'établit, pour éviter le Head-of-Line Blocking
+        // Fallback fiable limité à ~30 Hz tant que fastConn s'établit, pour éviter le Head-of-Line Blocking
         const rel = entry.controlConn;
         if (rel && rel.open && this._reliableFallbackTick === 0) {
           const dc = rel.dataChannel || rel._dc;
-          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 2048) {
+          if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 8192) {
             continue;
           }
           try { rel.send(buffer); } catch (_) {}
@@ -965,13 +968,13 @@ export class NetworkManager {
     } else {
       if (this.fastConn && this.fastConn.open) {
         const dc = this.fastConn.dataChannel || this.fastConn._dc;
-        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 4096) {
+        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 16384) {
           return;
         }
         try { this.fastConn.send(buffer); } catch (_) {}
       } else if (this.reliableConn && this.reliableConn.open && this._reliableFallbackTick === 0) {
         const dc = this.reliableConn.dataChannel || this.reliableConn._dc;
-        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 2048) {
+        if (dc && typeof dc.bufferedAmount === 'number' && dc.bufferedAmount > 8192) {
           return;
         }
         try { this.reliableConn.send(buffer); } catch (_) {}
@@ -1236,12 +1239,16 @@ export class NetworkManager {
 
       case 'START_ONLINE_RACE': {
         if (this.role !== 'guest') break;
+        this._lastRxSnapshotSeq = 0;
+        this._guestTxAccum = NET_TICK_INTERVAL;
         this.onStartOnlineRace(msg.payload);
         break;
       }
 
       case 'RESET_ONLINE_RACE': {
         if (this.role !== 'guest') break;
+        this._lastRxSnapshotSeq = 0;
+        this._guestTxAccum = NET_TICK_INTERVAL;
         this.onResetOnlineRace(msg.payload);
         break;
       }
@@ -1287,20 +1294,25 @@ export class NetworkManager {
       }
 
       case 'NET_PING': {
-        this._sendControlMessage({
+        const pongMsg = {
           type: 'NET_PONG',
           ts: msg.ts,
           targetClientId: msg.senderClientId,
-        });
+        };
+        if (hostEntry?.controlConn && hostEntry.controlConn.open) {
+          try { hostEntry.controlConn.send(pongMsg); } catch (_) {}
+        } else {
+          this._sendControlMessage(pongMsg);
+        }
         break;
       }
 
       case 'NET_PONG': {
         if (msg.targetClientId && msg.targetClientId !== this._localClientId) break;
         const nowTs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        const rtt = Math.max(10, Math.min(450, nowTs - (Number(msg.ts) || nowTs)));
-        this.estimatedRttMs = this.estimatedRttMs * 0.6 + rtt * 0.4;
-        this.oneWayLatencySec = Math.max(0.015, Math.min(0.16, (this.estimatedRttMs * 0.5) / 1000));
+        const rtt = Math.max(4, Math.min(450, nowTs - (Number(msg.ts) || nowTs)));
+        this.estimatedRttMs = this.estimatedRttMs * 0.55 + rtt * 0.45;
+        this.oneWayLatencySec = Math.max(0.008, Math.min(0.16, (this.estimatedRttMs * 0.5) / 1000 + NET_TICK_INTERVAL * 0.5));
         break;
       }
 
@@ -1352,6 +1364,7 @@ export class NetworkManager {
       st.progOrFinish = view[15];
       st.pickedTokenIdx = Math.round(view[16]);
       st.lateralSpeed = view[17];
+      st.yawRate = view.length >= 20 ? view[19] : 0;
       this.onGuestState(st);
     } else if (magic === PACKET_GUEST_INPUT && this.role === 'host') {
       const slotIdx = hostEntry
@@ -1605,13 +1618,15 @@ export class NetworkManager {
       buf[base + 13] = v.lap || 1;
       buf[base + 14] = v.rank || (i + 1);
       buf[base + 15] = v.finished ? (v.finishTime || 0) : (v.raceProgress || 0);
+      buf[base + 16] = v.lateralSpeed || 0;
+      buf[base + 17] = v.yawRate !== undefined ? v.yawRate : (v.chassisBody?.angularVelocity?.y || 0);
     }
 
     this._sendFastBinary(buf);
   }
 
   /**
-   * Côté Invité : envoie l'état physique complet de sa voiture à 30 Hz vers l'Hôte via DataChannel non-fiable.
+   * Côté Invité : envoie l'état physique complet de sa voiture à 60 Hz vers l'Hôte via DataChannel non-fiable.
    */
   sendGuestState(vehicle, pickedTokenIdx = -1, dt = NET_TICK_INTERVAL) {
     if (!this.active || this.role !== 'guest' || !vehicle) return;
@@ -1654,6 +1669,7 @@ export class NetworkManager {
     buf[16] = pickedTokenIdx;
     buf[17] = vehicle.lateralSpeed || 0;
     buf[18] = this.mySlotIndex;
+    buf[19] = vehicle.yawRate !== undefined ? vehicle.yawRate : (vehicle.chassisBody?.angularVelocity?.y || 0);
     this._sendFastBinary(buf);
   }
 

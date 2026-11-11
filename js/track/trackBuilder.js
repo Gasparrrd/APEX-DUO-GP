@@ -9,13 +9,13 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=33';
-import { seededRandom, wrap } from '../core/utils.js?v=33';
+import { CONFIG } from '../config.js?v=39';
+import { seededRandom, wrap } from '../core/utils.js?v=39';
 import {
   asphaltTexture, grassTexture, curbTexture, checkerTexture,
   blobShadowTexture, billboardTexture, chevronTexture,
   distanceBoardTexture, gantryTexture,
-} from '../gfx/textures.js?v=33';
+} from '../gfx/textures.js?v=39';
 
 export class TrackBuilder {
   /**
@@ -270,8 +270,8 @@ export class TrackBuilder {
   _buildContinuousRoadTrimesh() {
     const L = this.layout;
     const n = L.count;
-    const halfWidth = L.barrierDistance + 2.5;
-    const step = 2;
+    const halfWidth = L.barrierDistance + 3.0;
+    const step = 1;
     const chunkSegs = 32;
 
     for (let start = 0; start < n; start += step * chunkSegs) {
@@ -1372,8 +1372,8 @@ export class TrackBuilder {
     if (this.layout.circuitId !== 'grotto') return false;
     // Couloir du tunnel rocheux + massif central + viaduc (x de -52 à +52, z de -112 à +136)
     if (Math.abs(x) < 52 && z >= -112 && z <= 136) return true;
-    // Lit de la rivière animée dans le canyon (autour de z = 88, x de -148 à +195)
-    if (z >= 62 && z <= 116 && x >= -148 && x <= 195) return true;
+    // Lit de la rivière animée dans le canyon (autour de z = 88, x de -245 à +290)
+    if (z >= 62 && z <= 116 && x >= -245 && x <= 290) return true;
     return false;
   }
 
@@ -1638,15 +1638,15 @@ export class TrackBuilder {
 
     // a) Lit sablonneux courbe + Rivière bleue animée effilée aux extrémités (pour un raccord naturel avec la prairie)
     const makeRiverRibbon = (width, segsX, segsZ) => {
-      const geo = new THREE.PlaneGeometry(320, width, segsX, segsZ);
+      const geo = new THREE.PlaneGeometry(520, width, segsX, segsZ);
       geo.rotateX(-Math.PI * 0.5);
       const pos = geo.attributes.position;
       for (let i = 0; i < pos.count; i++) {
         const rx = pos.getX(i);
         const rz = pos.getZ(i);
-        const u = Math.abs(rx) / 160; // 0 au centre -> 1 aux extrémités
+        const u = Math.abs(rx) / 260; // 0 au centre -> 1 aux extrémités
         const taper = Math.max(0.06, Math.sqrt(Math.max(0, 1 - u * u * 0.92)));
-        pos.setZ(i, rz * taper + Math.sin(rx * 0.022) * 8.5);
+        pos.setZ(i, rz * taper + Math.sin(rx * 0.018) * 10.5);
       }
       geo.computeVertexNormals();
       return geo;
@@ -1928,44 +1928,44 @@ export class TrackBuilder {
     group.name = 'grottoLifeAndBuildings';
     this.root.add(group);
 
-    // a) Grand complexe Paddock & Stands de course le long de la Grande Ligne Droite (z = 220, côté Sud z = 242)
+    // a) Grand complexe Paddock & Stands de course le long de la Grande Ligne Droite (z = 360, côté Sud z = 382)
     const pitWallMat = new THREE.MeshLambertMaterial({ color: 0xe8edf2 });
     const pitDarkMat = new THREE.MeshLambertMaterial({ color: 0x26303c });
     const pitGlassMat = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, roughness: 0.15, metalness: 0.75 });
     const pitAccentMat = new THREE.MeshBasicMaterial({ color: 0xff6d00 });
 
     const paddockGrp = new THREE.Group();
-    paddockGrp.position.set(35, 0, 220 + bd + 9.5);
+    paddockGrp.position.set(45, 0, 360 + bd + 9.5);
     group.add(paddockGrp);
 
-    const mainPitBox = new THREE.Mesh(new THREE.BoxGeometry(92, 5.2, 11.0), pitWallMat);
+    const mainPitBox = new THREE.Mesh(new THREE.BoxGeometry(116, 5.2, 11.0), pitWallMat);
     mainPitBox.position.y = 2.6;
-    const upperLounges = new THREE.Mesh(new THREE.BoxGeometry(86, 3.6, 9.2), pitDarkMat);
+    const upperLounges = new THREE.Mesh(new THREE.BoxGeometry(110, 3.6, 9.2), pitDarkMat);
     upperLounges.position.set(0, 7.0, 0.4);
-    const glassStrip = new THREE.Mesh(new THREE.BoxGeometry(84, 2.2, 0.3), pitGlassMat);
+    const glassStrip = new THREE.Mesh(new THREE.BoxGeometry(108, 2.2, 0.3), pitGlassMat);
     glassStrip.position.set(0, 7.0, -4.1);
-    const roofOverhang = new THREE.Mesh(new THREE.BoxGeometry(96, 0.55, 13.5), pitDarkMat);
+    const roofOverhang = new THREE.Mesh(new THREE.BoxGeometry(120, 0.55, 13.5), pitDarkMat);
     roofOverhang.position.set(0, 9.0, -0.5);
-    const accentStripe = new THREE.Mesh(new THREE.BoxGeometry(96.2, 0.32, 13.6), pitAccentMat);
+    const accentStripe = new THREE.Mesh(new THREE.BoxGeometry(120.2, 0.32, 13.6), pitAccentMat);
     accentStripe.position.set(0, 9.15, -0.5);
     paddockGrp.add(mainPitBox, upperLounges, glassStrip, roofOverhang, accentStripe);
 
-    // Portes de garages des stands (8 boxes) + Tour de contrôle
+    // Portes de garages des stands (10 boxes) + Tour de contrôle
     const bayDoorGeo = new THREE.BoxGeometry(7.2, 3.6, 0.25);
-    for (let b = -3.5; b <= 3.5; b += 1.0) {
+    for (let b = -4.5; b <= 4.5; b += 1.0) {
       const door = new THREE.Mesh(bayDoorGeo, pitDarkMat);
       door.position.set(b * 10.5, 1.8, -5.45);
       paddockGrp.add(door);
     }
     const towerShaft = new THREE.Mesh(new THREE.BoxGeometry(7.5, 18.0, 7.5), pitDarkMat);
-    towerShaft.position.set(-52, 9.0, 0);
+    towerShaft.position.set(-66, 9.0, 0);
     const towerCab = new THREE.Mesh(new THREE.BoxGeometry(10.5, 4.2, 10.5), pitGlassMat);
-    towerCab.position.set(-52, 19.5, 0);
+    towerCab.position.set(-66, 19.5, 0);
     const towerRoof = new THREE.Mesh(new THREE.BoxGeometry(11.8, 0.8, 11.8), pitWallMat);
-    towerRoof.position.set(-52, 21.8, 0);
+    towerRoof.position.set(-66, 21.8, 0);
     paddockGrp.add(towerShaft, towerCab, towerRoof);
 
-    // b) Poteaux lumineux (lampadaires) le long de la Grande Ligne Droite (x de -95 à +165)
+    // b) Poteaux lumineux (lampadaires) le long de la Grande Ligne Droite (x de -220 à +260, z = 360)
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x454d57 });
     const lampBulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
     const poleShaftGeo = new THREE.CylinderGeometry(0.14, 0.20, 9.5, 6);
@@ -1973,10 +1973,10 @@ export class TrackBuilder {
     const poleArmGeo = new THREE.BoxGeometry(0.22, 0.22, 2.8);
     const lampHeadGeo = new THREE.BoxGeometry(0.95, 0.22, 0.55);
 
-    for (let lx = -90; lx <= 162; lx += 28) {
+    for (let lx = -210; lx <= 258; lx += 32) {
       for (const side of [-1, 1]) {
         const lampGrp = new THREE.Group();
-        lampGrp.position.set(lx, 0, 220 + side * (bd + 1.2));
+        lampGrp.position.set(lx, 0, 360 + side * (bd + 1.2));
         const shaft = new THREE.Mesh(poleShaftGeo, poleMat);
         const arm = new THREE.Mesh(poleArmGeo, poleMat);
         arm.position.set(0, 9.3, -side * 1.2);
@@ -2038,10 +2038,11 @@ export class TrackBuilder {
     const camperStripeMat = new THREE.MeshLambertMaterial({ color: 0x1e88e5 });
     const tentColors = [0xff7043, 0x26a69a, 0xffca28, 0x5c6bc0];
     const campSpots = [
-      [-155, 0.0, 152, 0.4],
-      [-175, 0.0, 132, 0.9],
-      [155, 0.0, 185, -0.6],
-      [-85, 0.5, -165, 1.2],
+      [-235, 0.0, 265, 0.4],
+      [-275, 0.0, 285, 0.9],
+      [275, 0.0, 310, -0.6],
+      [-185, 0.5, -310, 1.2],
+      [310, 12.0, 145, -0.4],
     ];
 
     for (let c = 0; c < campSpots.length; c++) {
@@ -2144,13 +2145,14 @@ export class TrackBuilder {
     const quat = new THREE.Quaternion();
     const scl = new THREE.Vector3();
 
-    // Bosquets alpins denses sur les reliefs Est, Ouest et Nord + bordures de piste
+    // Bosquets alpins denses sur les reliefs Est, Ouest et Nord + bordures de piste (échelle 2x)
     const alpineZones = [
-      [150, 110, 62, 55],
-      [210, -25, 68, 60],
-      [-150, -125, 72, 65],
-      [-135, 95, 64, 52],
-      [115, -145, 58, 48],
+      [240, 210, 88, 65],
+      [380, -45, 92, 70],
+      [-280, -230, 95, 75],
+      [-235, 135, 84, 62],
+      [215, -185, 78, 58],
+      [-335, 295, 76, 55],
     ];
 
     for (const [cx, cz, rad, count] of alpineZones) {
@@ -2319,6 +2321,7 @@ export class TrackBuilder {
     const n = L.count;
     const bd = L.barrierDistance;
     const railStep = 2;
+    const steps = Math.ceil(n / railStep);
     const railVerts = [];
     const railNorms = [];
     const railIndices = [];
@@ -2326,8 +2329,8 @@ export class TrackBuilder {
 
     for (const side of [-1, 1]) {
       for (const [y0, y1] of [[0.52, 0.82], [0.18, 0.42]]) {
-        for (let i = 0; i <= n; i += railStep) {
-          const idx = i % n;
+        for (let s = 0; s <= steps; s++) {
+          const idx = (s < steps) ? ((s * railStep) % n) : 0;
           const p = L.points[idx], r = L.rights[idx];
           const x = p.x + r.x * side * bd;
           const z = p.z + r.z * side * bd;
@@ -2336,7 +2339,7 @@ export class TrackBuilder {
           railVerts.push(x, p.y + y0, z, x, p.y + y1, z);
           railNorms.push(nx, 0.15, nz, nx, 0.15, nz);
 
-          if (i < n) {
+          if (s < steps) {
             const a = vCount, b = vCount + 1, c = vCount + 2, d = vCount + 3;
             if (side > 0) railIndices.push(a, b, c, b, d, c);
             else railIndices.push(a, c, b, b, c, d);
@@ -2383,8 +2386,8 @@ export class TrackBuilder {
 
     // Colliders physiques découpés en chunks spatiaux de 8 segments (physStep = 4)
     // pour que SAPBroadphase élague 98% des boîtes de barrières à chaque sous-pas physique et raycast IA !
-    const physStep = 4;
-    const chunkSteps = 8;
+    const physStep = 2;
+    const chunkSteps = 16;
     const halfThick = CONFIG.track.barrierThickness * 0.5;
     const halfHeight = CONFIG.track.barrierHeight * 0.5;
     const q = new CANNON.Quaternion();
@@ -2419,7 +2422,7 @@ export class TrackBuilder {
           const cz = (az + bz) * 0.5 - oz;
           const horizLen = Math.hypot(bx - ax, bz - az) || 1;
           const dy = p1.y - p0.y;
-          const segLen = Math.hypot(horizLen, dy) * 0.54;
+          const segLen = Math.hypot(horizLen, dy) * 0.56;
           const yaw = Math.atan2(bx - ax, bz - az);
           const pitch = -Math.atan2(dy, horizLen);
 
@@ -2427,8 +2430,8 @@ export class TrackBuilder {
           threeQuat.setFromEuler(euler);
           q.set(threeQuat.x, threeQuat.y, threeQuat.z, threeQuat.w);
 
-          const boxShape = new CANNON.Box(new CANNON.Vec3(halfThick, halfHeight + 0.35, segLen));
-          chunkBody.addShape(boxShape, new CANNON.Vec3(cx, cy, cz), q);
+          const boxShape = new CANNON.Box(new CANNON.Vec3(halfThick + 0.12, halfHeight + 1.4, segLen));
+          chunkBody.addShape(boxShape, new CANNON.Vec3(cx, cy - 0.35, cz), q);
         }
       }
 

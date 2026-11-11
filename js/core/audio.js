@@ -15,7 +15,7 @@
  *         * Au ralenti (véhicule à l'arrêt), maintien d'un « rumble » grave et stable à basse fréquence (~40–50 Hz)
  *  3. Effets sonores de course : ramassage des jetons de boost (normal +25% / rare +40%), boost, dérapage, collisions.
  */
-import { clamp } from './utils.js?v=33';
+import { clamp } from './utils.js?v=39';
 
 export const LOBBY_MUSIC_URL = './salon.mp3';
 
@@ -47,12 +47,42 @@ export class SoundManager {
 
     const unlock = () => {
       this.ensureStarted();
-      if (this.inLobby) {
+      if (this.inLobby && !this._isRaceActive()) {
         this.playLobbyMusic();
+      } else if (this._isRaceActive()) {
+        this.stopLobbyMusicImmediately();
       }
     };
     window.addEventListener('pointerdown', unlock, { passive: true });
     window.addEventListener('keydown', unlock, { passive: true });
+  }
+
+  /** Vérifie si une course est actuellement active (interdit strictement la musique du salon). */
+  _isRaceActive() {
+    if (!this.inLobby) return true;
+    if (typeof window !== 'undefined' && window.racingApp && window.racingApp.gameState && window.racingApp.gameState !== 'LOBBY') {
+      return true;
+    }
+    const raceOverlay = typeof document !== 'undefined' ? document.getElementById('race-overlay') : null;
+    if (raceOverlay && !raceOverlay.classList.contains('hidden')) {
+      return true;
+    }
+    return false;
+  }
+
+  /** Coupe immédiatement la musique du salon et annule tout fondu en cours. */
+  stopLobbyMusicImmediately() {
+    this.inLobby = false;
+    if (this._fadeRafId) {
+      cancelAnimationFrame(this._fadeRafId);
+      this._fadeRafId = null;
+    }
+    if (this.lobbyAudio) {
+      this.lobbyAudio.volume = 0;
+      if (!this.lobbyAudio.paused) {
+        try { this.lobbyAudio.pause(); } catch (_) {}
+      }
+    }
   }
 
   /**
@@ -66,7 +96,7 @@ export class SoundManager {
   setLobbyMusicVolume(vol = 0.70) {
     this.lobbyMusicVolume = clamp(Number(vol) || 0, 0, 1);
     this.lobbyTargetVolume = this.lobbyMusicVolume * 0.55;
-    if (this.lobbyAudio && this.inLobby && !this.muted) {
+    if (this.lobbyAudio && this.inLobby && !this._isRaceActive() && !this.muted) {
       this.lobbyAudio.volume = this.lobbyTargetVolume;
     }
   }
@@ -103,32 +133,52 @@ export class SoundManager {
   }
 
   playLobbyMusic() {
+    if (this._isRaceActive()) {
+      this.stopLobbyMusicImmediately();
+      return;
+    }
     if (!this.lobbyAudio) this._initLobbyMusicElement();
     if (!this.lobbyAudio || this.muted) return;
     this.inLobby = true;
     if (this.lobbyAudio.paused) {
       this.lobbyAudio.volume = Math.max(0.05, this.lobbyAudio.volume || this.lobbyTargetVolume);
-      this.lobbyAudio.play().catch(() => {});
+      const p = this.lobbyAudio.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          if (!this.inLobby || this._isRaceActive()) {
+            this.stopLobbyMusicImmediately();
+          }
+        }).catch(() => {});
+      }
     }
   }
 
-  fadeOutLobbyMusic(durationMs = 850) {
+  fadeOutLobbyMusic(durationMs = 450) {
     this.inLobby = false;
     if (!this.lobbyAudio) return;
-    if (this._fadeRafId) cancelAnimationFrame(this._fadeRafId);
+    if (this._fadeRafId) {
+      cancelAnimationFrame(this._fadeRafId);
+      this._fadeRafId = null;
+    }
+    if (durationMs <= 0) {
+      this.stopLobbyMusicImmediately();
+      return;
+    }
 
     const audio = this.lobbyAudio;
     const startVol = audio.volume;
     const startTime = performance.now();
 
     const step = (now) => {
+      if (this.inLobby) return;
       const t = clamp((now - startTime) / Math.max(1, durationMs), 0, 1);
       audio.volume = Math.max(0, startVol * (1 - t));
       if (t < 1 && !this.inLobby) {
         this._fadeRafId = requestAnimationFrame(step);
       } else if (!this.inLobby) {
+        this._fadeRafId = null;
         audio.volume = 0;
-        audio.pause();
+        try { audio.pause(); } catch (_) {}
       }
     };
     this._fadeRafId = requestAnimationFrame(step);
@@ -136,23 +186,43 @@ export class SoundManager {
 
   fadeInLobbyMusic(durationMs = 950) {
     this.inLobby = true;
+    if (this._isRaceActive()) {
+      this.stopLobbyMusicImmediately();
+      return;
+    }
     if (!this.lobbyAudio) this._initLobbyMusicElement();
     if (!this.lobbyAudio || this.muted) return;
-    if (this._fadeRafId) cancelAnimationFrame(this._fadeRafId);
+    if (this._fadeRafId) {
+      cancelAnimationFrame(this._fadeRafId);
+      this._fadeRafId = null;
+    }
 
     const audio = this.lobbyAudio;
     const startVol = audio.paused ? 0.02 : audio.volume;
     audio.volume = startVol;
-    audio.play().catch(() => {});
+    const p = audio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(() => {
+        if (!this.inLobby || this._isRaceActive()) {
+          this.stopLobbyMusicImmediately();
+        }
+      }).catch(() => {});
+    }
 
     const targetVol = this.lobbyTargetVolume;
     const startTime = performance.now();
 
     const step = (now) => {
+      if (!this.inLobby || this._isRaceActive()) {
+        this.stopLobbyMusicImmediately();
+        return;
+      }
       const t = clamp((now - startTime) / Math.max(1, durationMs), 0, 1);
       audio.volume = clamp(startVol + (targetVol - startVol) * t, 0, 1);
       if (t < 1 && this.inLobby) {
         this._fadeRafId = requestAnimationFrame(step);
+      } else {
+        this._fadeRafId = null;
       }
     };
     this._fadeRafId = requestAnimationFrame(step);
@@ -518,6 +588,10 @@ export class SoundManager {
    * Met à jour l'audio en course selon le profil sélectionné (« Électrique » ou « Thermique »).
    */
   updateRaceAudio(players, playerCount = 1, isPaused = false) {
+    // Sécurité absolue : coupe immédiatement la musique du salon dès que l'audio de course tourne
+    if (this.inLobby || (this.lobbyAudio && !this.lobbyAudio.paused && !this._fadeRafId)) {
+      this.stopLobbyMusicImmediately();
+    }
     if (!this.ctx || this.ctx.state !== 'running') return;
 
     const now = this.ctx.currentTime;
@@ -808,4 +882,6 @@ export class SoundManager {
   }
 }
 
-export const soundManager = new SoundManager();
+export const soundManager = (typeof globalThis !== 'undefined' && globalThis.__apexSoundManager)
+  ? globalThis.__apexSoundManager
+  : (typeof globalThis !== 'undefined' ? (globalThis.__apexSoundManager = new SoundManager()) : new SoundManager());

@@ -13,24 +13,26 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=33';
-import { TrackLayout } from '../track/trackLayout.js?v=38';
-import { TrackBuilder } from '../track/trackBuilder.js?v=38';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=33';
-import { Vehicle } from '../physics/vehicle.js?v=33';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=33';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=33';
-import { ParticleSystem } from '../gfx/particles.js?v=33';
-import { WeatherSystem } from '../gfx/weather.js?v=33';
-import { soundManager } from '../core/audio.js?v=33';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=33';
-import { clamp } from '../core/utils.js?v=33';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=39';
+import { TrackLayout } from '../track/trackLayout.js?v=39';
+import { TrackBuilder } from '../track/trackBuilder.js?v=39';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=39';
+import { Vehicle } from '../physics/vehicle.js?v=39';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=39';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=39';
+import { ParticleSystem } from '../gfx/particles.js?v=39';
+import { WeatherSystem } from '../gfx/weather.js?v=39';
+import { soundManager } from '../core/audio.js?v=39';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=39';
+import { clamp } from '../core/utils.js?v=39';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();
 const _tagWorldPos = new THREE.Vector3();
 const _netFwd = new THREE.Vector3();
 const _netRight = new THREE.Vector3();
+const _netYawQuat = new THREE.Quaternion();
+const _netUpAxis = new THREE.Vector3(0, 1, 0);
 
 export class RaceScene {
   constructor(renderer, envMap, input, hud, callbacks = {}) {
@@ -234,13 +236,15 @@ export class RaceScene {
     const barrierMat = new CANNON.Material('barrier');
 
     this.world.addContactMaterial(new CANNON.ContactMaterial(chassisMat, barrierMat, {
-      friction: 0.015,
-      restitution: 0.25,
+      friction: 0.012,
+      restitution: 0.22,
     }));
 
     this.world.addContactMaterial(new CANNON.ContactMaterial(chassisMat, chassisMat, {
-      friction: 0.04,
-      restitution: 0.35,
+      friction: 0.015,
+      restitution: 0.20,
+      contactEquationStiffness: 1e7,
+      contactEquationRelaxation: 4,
     }));
 
     this.world.addContactMaterial(new CANNON.ContactMaterial(chassisMat, groundMat, {
@@ -412,6 +416,7 @@ export class RaceScene {
         v.netTargetQuat = new THREE.Quaternion();
         v.netVel = new THREE.Vector3();
         v.netTargetSpeed = 0;
+        v.netYawRate = 0;
         v.hasNetTarget = false;
         v.isNetDriven = false;
         this.players[pIdx] = v;
@@ -443,6 +448,7 @@ export class RaceScene {
         v.netTargetQuat = new THREE.Quaternion();
         v.netVel = new THREE.Vector3();
         v.netTargetSpeed = 0;
+        v.netYawRate = 0;
         v.hasNetTarget = false;
         v.isNetDriven = false;
         this.vehicles.push(v);
@@ -599,6 +605,7 @@ export class RaceScene {
       if (v.netTargetQuat) v.netTargetQuat.copy(v.renderQuaternion);
       if (v.netVel) v.netVel.set(0, 0, 0);
       v.netTargetSpeed = 0;
+      v.netYawRate = 0;
       v.hasNetTarget = false;
       v.isNetDriven = false;
     }
@@ -674,12 +681,13 @@ export class RaceScene {
     const {
       px, py, pz, qx, qy, qz, qw,
       forwardSpeed, steerAngle, boostEnergy,
-      flags, slowdownTimer, lap, progOrFinish, lateralSpeed,
+      flags, slowdownTimer, lap, progOrFinish, lateralSpeed, yawRate,
     } = st;
 
     v.isNetDriven = true;
     v.netTargetQuat.set(qx, qy, qz, qw);
     v.netTargetSpeed = forwardSpeed;
+    v.netYawRate = clamp(yawRate || 0, -4.0, 4.0);
 
     _netFwd.set(0, 0, -1).applyQuaternion(v.netTargetQuat);
     _netRight.set(1, 0, 0).applyQuaternion(v.netTargetQuat);
@@ -691,13 +699,23 @@ export class RaceScene {
     );
 
     const leadSec = (this.state === 'racing' && !Boolean(flags & 16) && Math.abs(forwardSpeed) > 0.35)
-      ? (this.network?.oneWayLatencySec ?? 0.03)
+      ? (this.network?.oneWayLatencySec ?? 0.025)
       : 0;
+    if (leadSec > 0 && Math.abs(v.netYawRate) > 0.01) {
+      _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec * 0.5);
+      v.netVel.applyQuaternion(_netYawQuat);
+    }
     v.netTargetPos.set(
       px + v.netVel.x * leadSec,
       py + v.netVel.y * leadSec,
       pz + v.netVel.z * leadSec
     );
+    if (leadSec > 0 && Math.abs(v.netYawRate) > 0.01) {
+      _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec * 0.5);
+      v.netVel.applyQuaternion(_netYawQuat);
+      _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec);
+      v.netTargetQuat.premultiply(_netYawQuat);
+    }
 
     v.forwardSpeed = forwardSpeed;
     v.lateralSpeed = latSpd;
@@ -795,6 +813,8 @@ export class RaceScene {
       const lap = Math.round(view[base + 13]);
       const rank = Math.round(view[base + 14]);
       const progOrFinish = view[base + 15];
+      const latSpd = VEHICLE_FLOATS >= 18 ? (view[base + 16] || 0) : 0;
+      const yawRate = VEHICLE_FLOATS >= 18 ? (view[base + 17] || 0) : 0;
 
       v.rank = rank;
 
@@ -833,20 +853,37 @@ export class RaceScene {
 
       v.netTargetQuat.set(qx, qy, qz, qw);
       v.netTargetSpeed = fwdSpeed;
+      v.netYawRate = clamp(yawRate, -4.0, 4.0);
 
       _netFwd.set(0, 0, -1).applyQuaternion(v.netTargetQuat);
-      v.netVel.set(_netFwd.x * fwdSpeed, _netFwd.y * fwdSpeed, _netFwd.z * fwdSpeed);
+      _netRight.set(1, 0, 0).applyQuaternion(v.netTargetQuat);
+      v.netVel.set(
+        _netFwd.x * fwdSpeed + _netRight.x * latSpd,
+        _netFwd.y * fwdSpeed + _netRight.y * latSpd,
+        _netFwd.z * fwdSpeed + _netRight.z * latSpd
+      );
 
       const leadSec = (this.state === 'racing' && !Boolean(flags & 16) && Math.abs(fwdSpeed) > 0.35)
-        ? (this.network?.oneWayLatencySec ?? 0.03)
+        ? (this.network?.oneWayLatencySec ?? 0.025)
         : 0;
+      if (leadSec > 0 && Math.abs(v.netYawRate) > 0.01) {
+        _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec * 0.5);
+        v.netVel.applyQuaternion(_netYawQuat);
+      }
       v.netTargetPos.set(
         px + v.netVel.x * leadSec,
         py + v.netVel.y * leadSec,
         pz + v.netVel.z * leadSec
       );
+      if (leadSec > 0 && Math.abs(v.netYawRate) > 0.01) {
+        _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec * 0.5);
+        v.netVel.applyQuaternion(_netYawQuat);
+        _netYawQuat.setFromAxisAngle(_netUpAxis, v.netYawRate * leadSec);
+        v.netTargetQuat.premultiply(_netYawQuat);
+      }
 
       v.forwardSpeed = fwdSpeed;
+      v.lateralSpeed = latSpd;
       v.speedKmh = Math.abs(fwdSpeed) * 3.6;
       v.steerAngle = steerAngle;
       v.isBoosting = boostActive;
@@ -871,20 +908,28 @@ export class RaceScene {
   _interpolateRemoteVehicle(v, dt, canDrive) {
     if (!v || !v.hasNetTarget) return;
 
-    if (canDrive && !v.parkingLocked && Math.abs(v.forwardSpeed) > 0.08) {
-      v.netTargetPos.x += v.netVel.x * dt;
-      v.netTargetPos.y += v.netVel.y * dt;
-      v.netTargetPos.z += v.netVel.z * dt;
+    if (canDrive && !v.parkingLocked) {
+      const yr = v.netYawRate || 0;
+      if (Math.abs(yr) > 0.01 && Math.abs(v.forwardSpeed) > 1.0) {
+        _netYawQuat.setFromAxisAngle(_netUpAxis, yr * dt);
+        v.netVel.applyQuaternion(_netYawQuat);
+        v.netTargetQuat.premultiply(_netYawQuat);
+      }
+      if (Math.abs(v.forwardSpeed) > 0.08) {
+        v.netTargetPos.x += v.netVel.x * dt;
+        v.netTargetPos.y += v.netVel.y * dt;
+        v.netTargetPos.z += v.netVel.z * dt;
+      }
     }
 
     const distSq = v.currPhysicsPos.distanceToSquared(v.netTargetPos);
-    if (distSq > 14.0 * 14.0) {
+    if (distSq > 10.0 * 10.0) {
       v.currPhysicsPos.copy(v.netTargetPos);
       v.prevPhysicsPos.copy(v.currPhysicsPos);
       v.currPhysicsQuat.copy(v.netTargetQuat);
       v.prevPhysicsQuat.copy(v.currPhysicsQuat);
     } else {
-      const interpFactor = 1.0 - Math.exp(-32.0 * dt);
+      const interpFactor = 1.0 - Math.exp(-46.0 * dt);
       v.currPhysicsPos.lerp(v.netTargetPos, interpFactor);
       v.prevPhysicsPos.copy(v.currPhysicsPos);
 
@@ -892,15 +937,19 @@ export class RaceScene {
       v.prevPhysicsQuat.copy(v.currPhysicsQuat);
     }
 
+    const proj = this.layout.project(v.currPhysicsPos.x, v.currPhysicsPos.z, v.trackIndex, v.currPhysicsPos.y, v._projOut);
+    if (v.currPhysicsPos.y < (proj.y || 0) + 0.40) {
+      v.currPhysicsPos.y = (proj.y || 0) + 0.40;
+    }
+
     const body = v.chassisBody;
     body.position.set(v.currPhysicsPos.x, v.currPhysicsPos.y, v.currPhysicsPos.z);
     body.quaternion.set(v.currPhysicsQuat.x, v.currPhysicsQuat.y, v.currPhysicsQuat.z, v.currPhysicsQuat.w);
     body.velocity.set(v.netVel.x, v.netVel.y, v.netVel.z);
-    body.angularVelocity.set(0, 0, 0);
+    body.angularVelocity.set(0, v.netYawRate || 0, 0);
     body.force.set(0, 0, 0);
     body.torque.set(0, 0, 0);
 
-    const proj = this.layout.project(v.currPhysicsPos.x, v.currPhysicsPos.z, v.trackIndex, v.currPhysicsPos.y, v._projOut);
     v.trackIndex = proj.index;
     v.trackS = proj.s;
     v.trackLateral = proj.lateral;
@@ -908,6 +957,131 @@ export class RaceScene {
     v.trackSlope = proj.slope || 0;
     v.model.setBraking(false);
     v.model.setBoost(v.isBoosting);
+  }
+
+  /**
+   * Résolution horizontale exacte des collisions voiture-contre-voiture par 2D SAT (OBB châssis) :
+   * évite les retournements brutaux, l'accrochage de coins et l'enfoncement sous la piste lors des chocs.
+   */
+  _resolveCarToCarCollisions() {
+    const cars = this.vehicles;
+    const count = cars.length;
+    if (count < 2) return;
+
+    const hw = 0.88;
+    const hl = 2.02;
+    const nowTs = performance.now();
+
+    for (let i = 0; i < count; i++) {
+      const a = cars[i];
+      const ba = a.chassisBody;
+      const aNet = Boolean(this.isOnline && a.isNetDriven);
+
+      const qa = ba.quaternion;
+      let fxA = -2 * (qa.x * qa.z + qa.w * qa.y);
+      let fzA = -(1 - 2 * (qa.x * qa.x + qa.y * qa.y));
+      const lenA = Math.hypot(fxA, fzA) || 1;
+      fxA /= lenA;
+      fzA /= lenA;
+      const rxA = -fzA;
+      const rzA = fxA;
+
+      for (let j = i + 1; j < count; j++) {
+        const b = cars[j];
+        const bb = b.chassisBody;
+        const bNet = Boolean(this.isOnline && b.isNetDriven);
+        if (aNet && bNet) continue;
+
+        if (Math.abs(ba.position.y - bb.position.y) > 1.55) continue;
+        const dx = bb.position.x - ba.position.x;
+        const dz = bb.position.z - ba.position.z;
+        if (Math.abs(dx) > 4.6 || Math.abs(dz) > 4.6) continue;
+
+        const qb = bb.quaternion;
+        let fxB = -2 * (qb.x * qb.z + qb.w * qb.y);
+        let fzB = -(1 - 2 * (qb.x * qb.x + qb.y * qb.y));
+        const lenB = Math.hypot(fxB, fzB) || 1;
+        fxB /= lenB;
+        fzB /= lenB;
+        const rxB = -fzB;
+        const rzB = fxB;
+
+        let minPen = Infinity;
+        let bestNx = 0;
+        let bestNz = 0;
+        let separated = false;
+
+        for (let axisIdx = 0; axisIdx < 4; axisIdx++) {
+          const ux = axisIdx === 0 ? fxA : axisIdx === 1 ? rxA : axisIdx === 2 ? fxB : rxB;
+          const uz = axisIdx === 0 ? fzA : axisIdx === 1 ? rzA : axisIdx === 2 ? fzB : rzB;
+
+          const centerProj = dx * ux + dz * uz;
+          const absDist = Math.abs(centerProj);
+          const projA = hl * Math.abs(fxA * ux + fzA * uz) + hw * Math.abs(rxA * ux + rzA * uz);
+          const projB = hl * Math.abs(fxB * ux + fzB * uz) + hw * Math.abs(rxB * ux + rzB * uz);
+          const pen = projA + projB - absDist;
+
+          if (pen <= 0) {
+            separated = true;
+            break;
+          }
+          if (pen < minPen) {
+            minPen = pen;
+            const sign = centerProj >= 0 ? 1 : -1;
+            bestNx = ux * sign;
+            bestNz = uz * sign;
+          }
+        }
+
+        if (separated || minPen <= 0.002) continue;
+
+        const wA = aNet ? 0 : (bNet ? 1 : 0.5);
+        const wB = bNet ? 0 : (aNet ? 1 : 0.5);
+
+        ba.position.x -= bestNx * minPen * wA;
+        ba.position.z -= bestNz * minPen * wA;
+        bb.position.x += bestNx * minPen * wB;
+        bb.position.z += bestNz * minPen * wB;
+
+        const relVn = (bb.velocity.x - ba.velocity.x) * bestNx + (bb.velocity.z - ba.velocity.z) * bestNz;
+        if (relVn < 0) {
+          const restitution = 0.24;
+          const impulse = -(1 + restitution) * relVn;
+          ba.velocity.x -= bestNx * impulse * wA;
+          ba.velocity.z -= bestNz * impulse * wA;
+          bb.velocity.x += bestNx * impulse * wB;
+          bb.velocity.z += bestNz * impulse * wB;
+
+          const yawNudge = clamp((dz * bestNx - dx * bestNz) * impulse * 0.035, -0.9, 0.9);
+          ba.angularVelocity.y = clamp(ba.angularVelocity.y + yawNudge * wA, -3.2, 3.2);
+          bb.angularVelocity.y = clamp(bb.angularVelocity.y + yawNudge * wB, -3.2, 3.2);
+
+          const impactSpeed = -relVn;
+          if (impactSpeed > 2.6 && (!a.isAI || !b.isAI)) {
+            const targetCar = !a.isAI ? a : b;
+            if (nowTs - (targetCar._lastCollisionSoundTime || 0) >= 150) {
+              targetCar._lastCollisionSoundTime = nowTs;
+              const intensity = clamp((impactSpeed - 1.5) / 18, 0.18, 1.0);
+              const pan = targetCar.id === 'p1' ? -0.45 : targetCar.id === 'p2' ? 0.45 : 0;
+              soundManager.playCollision(intensity, pan);
+            }
+          }
+        }
+
+        if (!aNet) {
+          ba.angularVelocity.x *= 0.55;
+          ba.angularVelocity.z *= 0.55;
+          const maxSlopeVelYA = Math.max(0, a.forwardSpeed * (a.trackSlope || 0)) + 2.2;
+          if (ba.velocity.y > maxSlopeVelYA) ba.velocity.y = maxSlopeVelYA;
+        }
+        if (!bNet) {
+          bb.angularVelocity.x *= 0.55;
+          bb.angularVelocity.z *= 0.55;
+          const maxSlopeVelYB = Math.max(0, b.forwardSpeed * (b.trackSlope || 0)) + 2.2;
+          if (bb.velocity.y > maxSlopeVelYB) bb.velocity.y = maxSlopeVelYB;
+        }
+      }
+    }
   }
 
   /**
@@ -1091,6 +1265,7 @@ export class RaceScene {
           }
         }
         this.world.step(FIXED_TIME_STEP);
+        this._resolveCarToCarCollisions();
         if (this.localPlayer) {
           this.localPlayer.afterPhysicsStep(FIXED_TIME_STEP, this.raceTime);
         }
@@ -1132,6 +1307,7 @@ export class RaceScene {
         }
 
         this.world.step(FIXED_TIME_STEP);
+        this._resolveCarToCarCollisions();
 
         for (let i = 0; i < this.vehicles.length; i++) {
           const v = this.vehicles[i];

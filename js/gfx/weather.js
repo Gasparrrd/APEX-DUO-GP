@@ -11,7 +11,7 @@
  *    pour simuler les reflets d'une chaussée détrempée.
  */
 import * as THREE from 'three';
-import { CONFIG, WEATHER_MODIFIERS } from '../config.js?v=33';
+import { CONFIG, WEATHER_MODIFIERS } from '../config.js?v=39';
 
 const BOX_WIDTH = 60;   // Largeur X du volume centré caméra (m)
 const BOX_HEIGHT = 40;  // Hauteur Y du volume centré caméra (m)

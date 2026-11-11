@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=38';
-import { InputManager } from './core/input.js?v=38';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=38';
-import { GarageScene } from './scenes/garageScene.js?v=38';
-import { RaceScene } from './scenes/raceScene.js?v=38';
-import { HUDController } from './ui/hud.js?v=38';
-import { soundManager } from './core/audio.js?v=38';
-import { NetworkManager } from './net/networkManager.js?v=38';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=39';
+import { InputManager } from './core/input.js?v=39';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=39';
+import { GarageScene } from './scenes/garageScene.js?v=39';
+import { RaceScene } from './scenes/raceScene.js?v=39';
+import { HUDController } from './ui/hud.js?v=39';
+import { soundManager } from './core/audio.js?v=39';
+import { NetworkManager } from './net/networkManager.js?v=39';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -1719,7 +1719,7 @@ class RacingApp {
   _launchOnlineRaceAsHost() {
     this.input.clearAll();
     soundManager.ensureStarted();
-    soundManager.fadeOutLobbyMusic();
+    soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);
@@ -1809,7 +1809,7 @@ class RacingApp {
     }
 
     soundManager.ensureStarted();
-    soundManager.fadeOutLobbyMusic();
+    soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);
@@ -1843,7 +1843,7 @@ class RacingApp {
   resetRace(rebuildFromLobby = true) {
     this.input.clearAll();
     soundManager.ensureStarted();
-    soundManager.fadeOutLobbyMusic();
+    soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);

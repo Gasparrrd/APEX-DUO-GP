@@ -11,11 +11,11 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=33';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=33';
-import { soundManager } from '../core/audio.js?v=33';
-import { CarModel } from '../gfx/carModel.js?v=33';
-import { blobShadowTexture } from '../gfx/textures.js?v=33';
+import { CONFIG, computeVehicleStats } from '../config.js?v=39';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=39';
+import { soundManager } from '../core/audio.js?v=39';
+import { CarModel } from '../gfx/carModel.js?v=39';
+import { blobShadowTexture } from '../gfx/textures.js?v=39';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;
@@ -199,6 +199,9 @@ export class Vehicle {
     this.manualDriftTimer = 0;
     this.manualDriftSide = 0;
     this.onGrass = false;
+    this._wasOnGrass = false;
+    this.grassSlowed = false;
+    this.yawRate = 0;
     this.visualPitch = 0;
     this.visualRoll = 0;
 
@@ -264,14 +267,93 @@ export class Vehicle {
    */
   afterPhysicsStep(dt, raceTime) {
     const body = this.chassisBody;
+    const proj = this.layout.project(body.position.x, body.position.z, this.trackIndex, body.position.y, this._projOut);
+    this._enforceTrackContainment(dt, body, proj, true);
     this.currPhysicsPos.set(body.position.x, body.position.y, body.position.z);
     this.currPhysicsQuat.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+    this.yawRate = body.angularVelocity.y;
     const wheels = this.raycastVehicle.wheelInfos;
     for (let i = 0; i < 4; i++) {
       this.raycastVehicle.updateWheelTransform(i);
       this.currSuspension[i] = clamp(wheels[i].suspensionLength, 0.08, C.suspensionRestLength + C.maxSuspensionTravel);
     }
     this._updateRaceProgress(dt, raceTime);
+  }
+
+  /**
+   * Empêche le véhicule de traverser le sol lors des fortes montées/descentes ou des chocs contre les glissières,
+   * garde les pneus plaqués en sommet de côte et contient latéralement le châssis dans les barrières.
+   */
+  _enforceTrackContainment(dt, body, proj, postStep = false) {
+    if (!proj || !this.layout) return;
+    const L = this.layout;
+    const maxCorrDist = L.barrierDistance + 3.2;
+    if (proj.dist > maxCorrDist && Math.abs(proj.lateral) > maxCorrDist) return;
+
+    const vel = body.velocity;
+    const roadY = proj.y || 0;
+    const idx = proj.index;
+    const t = proj.tangent || L.tangents[idx];
+    const r = L.rights[idx];
+    const fwdTrackVel = vel.x * t.x + vel.z * t.z;
+    const terrainVelY = fwdTrackVel * (proj.slope || 0);
+
+    // 1) Barrière latérale souple : empêche de passer derrière ou sous les glissières lors d'un impact
+    const maxLat = L.barrierDistance - 0.92;
+    const absLat = Math.abs(proj.lateral);
+    if (absLat > maxLat && Math.abs(body.position.y - roadY) < 4.5) {
+      const signLat = proj.lateral >= 0 ? 1 : -1;
+      const excessLat = absLat - maxLat;
+      body.position.x -= r.x * signLat * excessLat;
+      body.position.z -= r.z * signLat * excessLat;
+
+      const radialVel = vel.x * r.x + vel.z * r.z;
+      if (radialVel * signLat > 0) {
+        const reflect = -radialVel * 1.18;
+        vel.x += r.x * reflect;
+        vel.z += r.z * reflect;
+      }
+      if (body.position.y < roadY + 0.44) {
+        body.position.y = roadY + 0.44;
+      }
+      if (vel.y < terrainVelY) {
+        vel.y = terrainVelY;
+      }
+      body.angularVelocity.x *= 0.78;
+      body.angularVelocity.z *= 0.78;
+    }
+
+    // 2) Anti-tunneling sous le tablier routier (montées, bas de côtes et compressions)
+    const minChassisY = roadY + 0.40;
+    if (body.position.y < minChassisY && body.position.y > roadY - 4.2) {
+      body.position.y = minChassisY;
+      if (vel.y < terrainVelY) {
+        vel.y = terrainVelY;
+      }
+      body.angularVelocity.x *= 0.72;
+      body.angularVelocity.z *= 0.72;
+    }
+
+    // 3) Plaquage sur les crêtes / grandes montées : évite que la voiture ne décolle et perde ses appuis
+    if (postStep) {
+      const relHeight = body.position.y - roadY;
+      const maxNormalHeight = 0.74;
+      if (relHeight > maxNormalHeight && relHeight < 2.8) {
+        const excess = relHeight - maxNormalHeight;
+        body.position.y -= Math.min(excess, excess * 0.48 + 0.045);
+        const maxAllowedVelY = terrainVelY + 0.35;
+        if (vel.y > maxAllowedVelY) {
+          vel.y = damp(vel.y, maxAllowedVelY, 22, dt);
+        }
+      }
+
+      const q = body.quaternion;
+      const upY = 1 - 2 * (q.x * q.x + q.z * q.z);
+      if (upY < 0.80) {
+        body.angularVelocity.x *= 0.82;
+        body.angularVelocity.z *= 0.82;
+      }
+    }
   }
 
   /**
@@ -360,6 +442,10 @@ export class Vehicle {
       this.controls.steer = 0;
       this.controls.boost = false;
       this.controls.reset = false;
+      this.onGrass = false;
+      this._wasOnGrass = false;
+      this.grassSlowed = false;
+      this.yawRate = 0;
       this.boostEnergy = B.startEnergy;
       this.isBoosting = false;
       this.boostExhaustLatch = false;
@@ -544,6 +630,7 @@ export class Vehicle {
 
     // Projection sur la piste 3D (avec objet pré-alloué `this._projOut`)
     const proj = this.layout.project(body.position.x, body.position.z, this.trackIndex, body.position.y, this._projOut);
+    this._enforceTrackContainment(dt, body, proj, false);
     this.trackIndex = proj.index;
     this.trackS = proj.s;
     this.trackLateral = proj.lateral;
@@ -552,7 +639,7 @@ export class Vehicle {
     this.inTunnel = Boolean(this.layout.isInTunnel && this.layout.isInTunnel(body.position.x, body.position.y, body.position.z));
     this.onGrass = Math.abs(proj.lateral) > this.layout.halfWidth + 0.35;
 
-    if (body.position.y < this.trackY - 3.5) {
+    if (body.position.y < this.trackY - 4.0) {
       this.resetToTrack(0);
       return;
     }
@@ -613,9 +700,33 @@ export class Vehicle {
     this.raycastVehicle.setSteeringValue(this.steerAngle, 0);
     this.raycastVehicle.setSteeringValue(this.steerAngle, 1);
 
-    // 2) Système de Boost par Jetons
+    // 2) Système de Boost par Jetons & Malus Herbe (-25% comme un jeton ralentisseur)
     if (this.slowdownTimer > 0) {
       this.slowdownTimer = Math.max(0, this.slowdownTimer - dt);
+    }
+
+    const grassMalusActive = this.onGrass && canDrive && !this.finished;
+    if (grassMalusActive) {
+      const grassFactorSlow = B.slowdownFactor || 0.75;
+      const freshMalus = this.slowdownTimer <= 0.05;
+      this.slowdownFactor = grassFactorSlow;
+      this.slowdownTimer = Math.max(this.slowdownTimer, 0.30);
+      this.grassSlowed = true;
+      if (freshMalus && speedAbs > 6.0) {
+        vel.x *= grassFactorSlow;
+        vel.z *= grassFactorSlow;
+        this.forwardSpeed *= grassFactorSlow;
+        this.speedKmh = Math.abs(this.forwardSpeed) * 3.6;
+        if (!this.isAI) {
+          const pan = this.id === 'p1' ? -0.45 : this.id === 'p2' ? 0.45 : 0;
+          soundManager.playSlowdownPickup(pan);
+          this.triggerHudNotification('HERBE · RALENTISSEMENT -25%', 'slowdown', 1.15);
+        }
+      }
+      this._wasOnGrass = true;
+    } else {
+      this.grassSlowed = false;
+      this._wasOnGrass = false;
     }
 
     if (!boost) this.boostExhaustLatch = false;
@@ -678,10 +789,12 @@ export class Vehicle {
         const sustainTaper = clamp((1.0 - uNorm) / 0.06, 0, 1);
         totalEngineForce = effectiveThrottle * (accelForce * topEndTaper + passiveDragNow * sustainTaper);
       } else if (this.slowdownTimer > 0) {
-        wheelBrake = clamp((this.forwardSpeed - maxSpeed) * 8.0, 4.0, 28.0);
+        wheelBrake = clamp((this.forwardSpeed - maxSpeed) * 12.0, 6.0, 42.0);
       }
     } else {
-      wheelBrake = C.engineBrake;
+      wheelBrake = (this.slowdownTimer > 0 && this.forwardSpeed > maxSpeed)
+        ? clamp((this.forwardSpeed - maxSpeed) * 12.0, 6.0, 42.0)
+        : C.engineBrake;
     }
 
     const frontForce = totalEngineForce * C.frontTorqueShare * 0.5;
@@ -841,8 +954,10 @@ export class Vehicle {
 
     // 6) Forces aérodynamiques + Vecteur de vent météo
     if (speedAbs > 0.2) {
-      const dragMag = stats.dragCoef * speedAbs * speedAbs + C.rollingResistance * speedAbs
-        + (this.onGrass && wheelsOnGround > 0 ? C.mass * C.grassDrag : 0);
+      const grassExtraDrag = this.onGrass && wheelsOnGround > 0
+        ? C.mass * (C.grassDrag * 0.08 + Math.max(0, this.forwardSpeed - maxSpeed) * 1.8)
+        : 0;
+      const dragMag = stats.dragCoef * speedAbs * speedAbs + C.rollingResistance * speedAbs + grassExtraDrag;
       const invV = 1 / speedAbs;
       // L'appui aérodynamique (downforce) plaque le véhicule selon son axe local -UP
       // Garantit une motricité parfaite et stable même dans les pentes les plus raides

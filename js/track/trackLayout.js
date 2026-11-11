@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=33';
-import { clamp, wrap } from '../core/utils.js?v=33';
+import { CONFIG } from '../config.js?v=39';
+import { clamp, wrap } from '../core/utils.js?v=39';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [
@@ -106,24 +106,27 @@ export const TRACK_POINTS_LAKE = [
  *  6. Grand Pont / Viaduc à arches (x = 0, z de +55 à +135, Y = 4.2m) enjambant la rivière animée du canyon avant le retour départ
  */
 export const TRACK_POINTS_GROTTO = [
-  // 1. Grande Ligne Droite (Départ / Arrivée au niveau du sol Y = 0, longeant le canyon Sud)
-  [-100, 0.0, 220], [-20, 0.0, 220], [60, 0.0, 220], [140, 0.0, 220],
-  // 2. L'Ascension et les Épingles en Montagne (lacets panoramiques à flanc de falaise, Y -> +35m)
-  [215, 2.2, 206], [268, 6.2, 160], [262, 10.5, 98],
-  [204, 14.8, 72], [182, 18.8, 30],                        // Épingle 1 & chicane de falaise fluide
-  [235, 23.2, -6], [268, 27.6, -54], [222, 32.0, -96],     // Grande épingle 2 & rampe sommitale
-  [150, 34.8, -68],
-  // 3. La Piste Supérieure (Crête rocheuse au sommet à Y = 35.6m, passant au-dessus du tunnel en (0, -35))
-  [90, 35.5, -38], [45, 35.6, -35], [0, 35.6, -35], [-45, 35.6, -35], [-90, 35.3, -38],
-  // 4. Grande Descente Rapide Nord-Ouest (Y plonge de 35m à 0.5m)
-  [-158, 30.2, -56], [-212, 21.8, -104], [-218, 13.0, -172],
-  [-166, 6.2, -218], [-92, 2.0, -226], [-28, 0.6, -196], [0, 0.5, -144],
-  // 5. La Piste Inférieure & Le Tunnel Rocheux (x = 0, z de -100 à +22, Y = 0.5m, soit 35m SOUS la crête !)
-  [0, 0.5, -100], [0, 0.5, -60], [0, 0.5, -20], [0, 0.5, 22],
+  // 1. Très Grande Ligne Droite du Canyon Sud (Départ / Arrivée à Y = 0, z = 360, ~540 m de pleine vitesse)
+  [-170, 0.0, 360], [-65, 0.0, 360], [45, 0.0, 360], [155, 0.0, 360], [265, 0.0, 360],
+  // 2. Grande Courbe Est & L'Ascension des Lacets Alpins (Y grimpe progressivement de 0 à +35.6m)
+  [355, 1.8, 344], [435, 5.2, 286], [482, 9.5, 198], [462, 13.8, 108],
+  [382, 17.5, 62], [328, 20.8, 4], [358, 24.0, -58],         // Épingle alpine 1 & corniche de falaise
+  [442, 27.2, -104], [488, 30.2, -168], [448, 32.8, -234],   // Grande boucle orientale & Épingle 2
+  [355, 34.4, -242], [258, 35.0, -190], [192, 35.3, -108], [138, 35.5, -52],
+  // 3. La Piste Supérieure (Crête rocheuse sommitale à Y = 35.6m, passant 35m AU-DESSUS du tunnel en (0, -35))
+  [82, 35.6, -36], [40, 35.6, -35], [0, 35.6, -35], [-40, 35.6, -35], [-82, 35.6, -36], [-138, 35.3, -44],
+  // 4. Grande Descente Rapide & Vallée Nord-Ouest Haute Vitesse (Y plonge de 35.3m à 0.5m)
+  [-218, 31.4, -68], [-312, 25.2, -108], [-405, 18.5, -154],
+  [-472, 12.2, -222], [-482, 7.0, -302], [-422, 3.4, -368],
+  [-322, 1.6, -388], [-205, 0.9, -368], [-105, 0.6, -318],
+  [-32, 0.5, -244], [0, 0.5, -166],
+  // 5. La Piste Inférieure & Le Long Tunnel Rocheux (x = 0, z de -105 à +22, Y = 0.5m, soit 35m SOUS la crête !)
+  [0, 0.5, -105], [0, 0.5, -60], [0, 0.5, -20], [0, 0.5, 22],
   // 6. Le Grand Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +52 à +124, Y culmine à 6.8m)
   [0, 3.4, 52], [0, 6.8, 88], [0, 4.0, 124],
-  // 7. Large boucle Ouest fluide vers la Grande Ligne Droite de départ (Y -> 0, grand rayon sans cassure)
-  [-40, 1.2, 148], [-118, 0.4, 146], [-180, 0.1, 168], [-186, 0.0, 204], [-148, 0.0, 220],
+  // 7. Grande Enchaînement Sud-Ouest du Canyon & Retour Ligne Droite (large rayon fluide vers z = 360)
+  [-32, 1.6, 166], [-106, 0.6, 194], [-208, 0.2, 204], [-316, 0.0, 214],
+  [-404, 0.0, 248], [-432, 0.0, 302], [-382, 0.0, 346], [-285, 0.0, 360],
 ];
 
 export const CIRCUITS = {
@@ -188,9 +191,9 @@ export class TrackLayout {
     const curve = new THREE.CatmullRomCurve3(rawPoints, true, 'centripetal');
     this.curve = curve;
 
-    // Longueur 2D/3D et échantillonnage régulier
+    // Longueur 2D/3D et échantillonnage régulier (multiple de 8 pour éviter tout décalage aux boucles)
     this.length = curve.getLength();
-    const n = Math.max(64, Math.round(this.length / cfg.sampleSpacing));
+    const n = Math.max(64, Math.round(this.length / (cfg.sampleSpacing * 8)) * 8);
     this.count = n;
     this.ds = this.length / n;
 
@@ -202,8 +205,8 @@ export class TrackLayout {
     for (let i = 0; i < n; i++) rawY[i] = Math.max(0, pts[i].y);
     let smoothY = rawY;
     if (this.hasRelief) {
-      const passes = this.circuitId === 'lake' ? 4 : 3;
-      const radius = this.circuitId === 'lake' ? 8 : 6;
+      const passes = 4;
+      const radius = 8;
       for (let p = 0; p < passes; p++) {
         smoothY = smoothLoop(smoothY, radius);
       }
@@ -395,14 +398,19 @@ export class TrackLayout {
     }
 
     const i = this.findNearestIndex(x, z, hint, 65, y);
+    const n = this.points.length;
     const p = this.points[i], t = this.tangents[i], r = this.rights[i];
     const dx = x - p.x, dz = z - p.z;
+    const along = clamp(dx * t.x + dz * t.z, -this.ds, this.ds);
+    const pAdj = along >= 0 ? this.points[(i + 1) % n] : this.points[(i - 1 + n) % n];
+    const frac = Math.min(1, Math.abs(along) / (this.ds || 1));
     out.index = i;
     out.s = wrap(i * this.ds + dx * t.x + dz * t.z, this.length);
     out.lateral = dx * r.x + dz * r.z;
     out.dist = Math.hypot(dx, dz);
-    out.y = p.y;
+    out.y = Math.max(0, p.y + (pAdj.y - p.y) * frac);
     out.slope = this.slopes[i];
+    out.tangent = t;
     return out;
   }
 
