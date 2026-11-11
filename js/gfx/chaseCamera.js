@@ -7,8 +7,8 @@
  *  - Tampon de profondeur stabilisé : `camera.near = 0.1` et `camera.far = 1000`
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=39';
-import { clamp, damp } from '../core/utils.js?v=39';
+import { CONFIG } from '../config.js?v=40';
+import { clamp, damp } from '../core/utils.js?v=40';
 
 const _fwd = new THREE.Vector3();
 const _targetPos = new THREE.Vector3();

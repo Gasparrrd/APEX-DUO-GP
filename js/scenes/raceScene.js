@@ -13,18 +13,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=39';
-import { TrackLayout } from '../track/trackLayout.js?v=39';
-import { TrackBuilder } from '../track/trackBuilder.js?v=39';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=39';
-import { Vehicle } from '../physics/vehicle.js?v=39';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=39';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=39';
-import { ParticleSystem } from '../gfx/particles.js?v=39';
-import { WeatherSystem } from '../gfx/weather.js?v=39';
-import { soundManager } from '../core/audio.js?v=39';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=39';
-import { clamp } from '../core/utils.js?v=39';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=40';
+import { TrackLayout } from '../track/trackLayout.js?v=40';
+import { TrackBuilder } from '../track/trackBuilder.js?v=40';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=40';
+import { Vehicle } from '../physics/vehicle.js?v=40';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=40';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=40';
+import { ParticleSystem } from '../gfx/particles.js?v=40';
+import { WeatherSystem } from '../gfx/weather.js?v=40';
+import { soundManager } from '../core/audio.js?v=40';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=40';
+import { clamp } from '../core/utils.js?v=40';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();
@@ -320,7 +320,7 @@ export class RaceScene {
     CONFIG.race.weather = raceSettings.weather || 'sunny';
     CONFIG.race.difficulty = diffKey;
 
-    const maxTotalCars = CONFIG.race.maxTotalCars || MAX_TOTAL_CARS || 10;
+    const maxTotalCars = CONFIG.race.maxTotalCars || MAX_TOTAL_CARS || 15;
     const minBots = playerCount === 0 ? 2 : 0;
     const maxBotsAllowed = Math.max(0, maxTotalCars - playerCount);
     const botCount = Math.min(maxBotsAllowed, Math.max(minBots, numBots));
@@ -743,12 +743,14 @@ export class RaceScene {
 
     const notifCode = (flags >> 5) & 3;
     if (notifCode > 0 && v.hudNotificationTimer <= 0.05) {
+      const rankBonus = Math.max(1, Math.round(v.rank || 1)) * (CONFIG.boost.rankBonusStep || 8);
+      const superBonus = Math.max(CONFIG.boost.rareBonus || 40, rankBonus + 16);
       const type = notifCode === 2 ? 'super' : notifCode === 3 ? 'slowdown' : 'boost';
       const text = notifCode === 2
-        ? 'SUPER BOOST +40%'
+        ? `SUPER BOOST +${superBonus}%`
         : notifCode === 3
           ? 'RALENTISSEMENT -25%'
-          : 'BOOST +25%';
+          : `BOOST +${rankBonus}%`;
       v.triggerHudNotification(text, type, 1.5);
     }
 
@@ -842,12 +844,14 @@ export class RaceScene {
 
       const notifCode = (flags >> 5) & 3;
       if (notifCode > 0 && v.hudNotificationTimer <= 0.05) {
+        const rankBonus = Math.max(1, Math.round(v.rank || 1)) * (CONFIG.boost.rankBonusStep || 8);
+        const superBonus = Math.max(CONFIG.boost.rareBonus || 40, rankBonus + 16);
         const type = notifCode === 2 ? 'super' : notifCode === 3 ? 'slowdown' : 'boost';
         const text = notifCode === 2
-          ? 'SUPER BOOST +40%'
+          ? `SUPER BOOST +${superBonus}%`
           : notifCode === 3
             ? 'RALENTISSEMENT -25%'
-            : 'BOOST +25%';
+            : `BOOST +${rankBonus}%`;
         v.triggerHudNotification(text, type, 1.5);
       }
 

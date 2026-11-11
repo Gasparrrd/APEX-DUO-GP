@@ -19,9 +19,9 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=39';
-import { clamp } from '../core/utils.js?v=39';
-import { soundManager } from '../core/audio.js?v=39';
+import { CONFIG } from '../config.js?v=40';
+import { clamp } from '../core/utils.js?v=40';
+import { soundManager } from '../core/audio.js?v=40';
 
 const B = CONFIG.boost;
 
@@ -55,8 +55,8 @@ export class BoostTokenSystem {
     this.tokenDiameter = trackWidth * 0.20;
     this.tokenRadius = this.tokenDiameter * 0.5;
 
-    this.boostCount = B.tokenCount ?? 7;
-    this.slowdownCount = B.slowdownTokenCount ?? 6;
+    this.boostCount = B.tokenCount ?? 8;
+    this.slowdownCount = B.slowdownTokenCount ?? 9;
 
     this._buildSharedAssets();
     this.tokens = [];
@@ -307,6 +307,19 @@ export class BoostTokenSystem {
   }
 
   /**
+   * Calcule le gain de boost proportionnel à la place dans la course :
+   *  - Jeton bleu standard : 8 * place (ex. 4ème -> 4 * 8 = +32%)
+   *  - Jeton doré rare : au minimum rareBonus (40%), sinon 8 * place + 16
+   */
+  _computeTokenBoostBonus(vehicle, isRare) {
+    const rank = Math.max(1, Math.round(vehicle?.rank || 1));
+    const step = B.rankBonusStep || 8;
+    const rankBonus = rank * step;
+    if (!isRare) return rankBonus;
+    return Math.max(B.rareBonus || 40, rankBonus + 16);
+  }
+
+  /**
    * Mise à jour côté Invité (0 ms de latence au ramassage) :
    * Anime les jetons actifs et détecte instantanément la collecte par le véhicule de l'Invité.
    * Retourne l'index du jeton collecté (ou -1 si aucun).
@@ -347,8 +360,9 @@ export class BoostTokenSystem {
               localPlayer.triggerHudNotification('RALENTISSEMENT -25%', 'slowdown', 2.0);
               if (soundManager.playSlowdownPickup) soundManager.playSlowdownPickup(0);
             } else {
-              localPlayer.boostEnergy = clamp(localPlayer.boostEnergy + token.bonus, 0, B.maxEnergy || 100);
-              const label = token.isRare ? 'SUPER BOOST +40%' : 'BOOST +25%';
+              const bonus = this._computeTokenBoostBonus(localPlayer, token.isRare);
+              localPlayer.boostEnergy = clamp(localPlayer.boostEnergy + bonus, 0, B.maxEnergy || 100);
+              const label = token.isRare ? `SUPER BOOST +${bonus}%` : `BOOST +${bonus}%`;
               const notifType = token.isRare ? 'super' : 'boost';
               localPlayer.triggerHudNotification(label, notifType, 1.6);
               if (soundManager.playBoostPickup) soundManager.playBoostPickup(token.isRare, 0);
@@ -463,8 +477,9 @@ export class BoostTokenSystem {
               soundManager.playSlowdownPickup(pan);
             }
           } else {
-            v.boostEnergy = clamp(v.boostEnergy + token.bonus, 0, B.maxEnergy || 100);
-            const label = token.isRare ? 'SUPER BOOST +40%' : 'BOOST +25%';
+            const bonus = this._computeTokenBoostBonus(v, token.isRare);
+            v.boostEnergy = clamp(v.boostEnergy + bonus, 0, B.maxEnergy || 100);
+            const label = token.isRare ? `SUPER BOOST +${bonus}%` : `BOOST +${bonus}%`;
             const notifType = token.isRare ? 'super' : 'boost';
             v.triggerHudNotification(label, notifType, 1.6);
 

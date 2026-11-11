@@ -7,14 +7,14 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=39';
-import { InputManager } from './core/input.js?v=39';
-import { setSharedCarEnvMap } from './gfx/carModel.js?v=39';
-import { GarageScene } from './scenes/garageScene.js?v=39';
-import { RaceScene } from './scenes/raceScene.js?v=39';
-import { HUDController } from './ui/hud.js?v=39';
-import { soundManager } from './core/audio.js?v=39';
-import { NetworkManager } from './net/networkManager.js?v=39';
+import { CONFIG, DEFAULT_PLAYER_CARS, VEHICLE_MODIFIERS, MAX_TOTAL_CARS, getVehicleDisplayStats } from './config.js?v=40';
+import { InputManager } from './core/input.js?v=40';
+import { setSharedCarEnvMap } from './gfx/carModel.js?v=40';
+import { GarageScene } from './scenes/garageScene.js?v=40';
+import { RaceScene } from './scenes/raceScene.js?v=40';
+import { HUDController } from './ui/hud.js?v=40';
+import { soundManager } from './core/audio.js?v=40';
+import { NetworkManager } from './net/networkManager.js?v=40';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -655,11 +655,11 @@ class RacingApp {
 
   /**
    * Met à jour dynamiquement la liste déroulante des bots (`#setting-bots`)
-   * pour ne jamais dépasser la capacité maximale de 10 voitures au total (joueurs humains + bots).
+   * pour ne jamais dépasser la capacité maximale de voitures au total (joueurs humains + bots, max 15).
    */
   _updateBotSelectorOptions() {
     const humanCount = this._getActiveHumanPlayerCount();
-    const maxTotal = CONFIG.race.maxTotalCars || MAX_TOTAL_CARS || 10;
+    const maxTotal = CONFIG.race.maxTotalCars || MAX_TOTAL_CARS || 15;
     const maxBots = Math.max(0, maxTotal - humanCount);
     const minBots = humanCount === 0 ? 2 : 0;
 

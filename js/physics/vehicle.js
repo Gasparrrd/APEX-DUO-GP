@@ -11,11 +11,11 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=39';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=39';
-import { soundManager } from '../core/audio.js?v=39';
-import { CarModel } from '../gfx/carModel.js?v=39';
-import { blobShadowTexture } from '../gfx/textures.js?v=39';
+import { CONFIG, computeVehicleStats } from '../config.js?v=40';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=40';
+import { soundManager } from '../core/audio.js?v=40';
+import { CarModel } from '../gfx/carModel.js?v=40';
+import { blobShadowTexture } from '../gfx/textures.js?v=40';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;
@@ -750,10 +750,12 @@ export class Vehicle {
     const boostTopMult = this.isBoosting ? (B.speedMultiplier || 1.20) : 1.0;
     const slowdownMult = this.slowdownTimer > 0 ? (this.slowdownFactor || 0.75) : 1.0;
     const aiSpeedMult = this.isAI ? (this.aiSpeedMultiplier || 1.0) : 1.0;
+    const aiForceMult = this.isAI ? clamp(aiSpeedMult, 0.80, 1.35) : 1.0;
+    const aiPowerMult = this.isAI ? clamp(aiSpeedMult * aiSpeedMult, 0.70, 1.55) : 1.0;
     const effectiveThrottle = this.isBoosting ? Math.max(throttle, 1.0) : throttle;
     const maxSpeed = stats.topSpeed * boostTopMult * slowdownMult * aiSpeedMult;
-    const maxEngineForceNow = stats.maxEngineForce * boostForceMult * slowdownMult * Math.max(1.0, aiSpeedMult);
-    const enginePowerNow = stats.enginePower * boostForceMult * slowdownMult * Math.max(1.0, aiSpeedMult * aiSpeedMult);
+    const maxEngineForceNow = stats.maxEngineForce * boostForceMult * slowdownMult * aiForceMult;
+    const enginePowerNow = stats.enginePower * boostForceMult * slowdownMult * aiPowerMult;
     let totalEngineForce = 0;
     let wheelBrake = 0;
     let brakingVisual = false;
@@ -808,7 +810,7 @@ export class Vehicle {
     // S'enclenche dès ~40 km/h lorsqu'on freine tout en braquant franchement.
     const driftMinSpeed = C.manualDriftMinSpeed || 11.0;
     const driftIntensity = C.manualDriftIntensity !== undefined ? C.manualDriftIntensity : 0.22;
-    const canManualDrift = (this.forwardSpeed > driftMinSpeed && brake > 0.25 && Math.abs(steer) > 0.25);
+    const canManualDrift = (!this.isAI && this.forwardSpeed > driftMinSpeed && brake > 0.25 && Math.abs(steer) > 0.25);
     if (canManualDrift) {
       if (!this.manualDrifting) {
         this.manualDrifting = true;

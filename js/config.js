@@ -4,7 +4,7 @@
  */
 
 /** Capacité maximale totale de voitures par course (joueurs humains + bots). */
-export const MAX_TOTAL_CARS = 10;
+export const MAX_TOTAL_CARS = 15;
 
 export const CONFIG = {
   physics: {
@@ -63,8 +63,8 @@ export const CONFIG = {
     maxSuspensionTravel: 0.32,       // Débattement max des suspensions en m
     maxSuspensionForce: 24000,       // Force max des suspensions en N
     rollInfluence: 0.08,             // Roulis de la carrosserie en virage
-    frictionFront: 3.15,             // Adhérence des pneus avant
-    frictionRear: 3.35,              // Adhérence des pneus arrière
+    frictionFront: 3.25,             // Adhérence des pneus avant
+    frictionRear: 3.45,              // Adhérence des pneus arrière
     lateralGripDamping: 8.0,         // Résistance au glissement latéral (plus haut = moins de glisse)
     slideRate: 0.55,                 // Taux de glissade global de base (modulé en temps réel par la météo, la vitesse et le braquage)
     manualDriftIntensity: 0.22,      // Force du dérapage manuel frein + braquage (0 = aucun, plus haut = plus violent)
@@ -83,7 +83,7 @@ export const CONFIG = {
     steerRate: 4.0,                  // Vitesse de braquage des roues
     steerReturnRate: 5.8,            // Vitesse de retour des roues au centre
     yawAssist: 0.26,                 // Aide au pivotement de la voiture en virage
-    dragCoef: 0.85,                  // Résistance de l'air
+    dragCoef: 0.80,                  // Résistance de l'air
     rollingResistance: 24,           // Frottement des pneus
     downforce: 3.4,                  // Appui aérodynamique (plaque la voiture au sol)
     grassDrag: 10,                  // Ralentissement supplémentaire dans l'herbe
@@ -94,17 +94,18 @@ export const CONFIG = {
   boost: {
     maxEnergy: 100,                  // Capacité max du boost (%)
     startEnergy: 20,                 // Boost au départ (%)
-    drain: 100 / 8,                // Consommation du boost (%/s)
+    drain: 100 / 7.5,                // Consommation du boost (%/s)
     regen: 0,                        // Recharge passive du boost (0 = aucune)
     checkpointBonus: 0,              // Boost gagné par checkpoint
     speedMultiplier: 1.75,           // Multiplicateur de vitesse max pendant le boost
-    forceMultiplier: 1.45,           // Multiplicateur de force motrice pendant le boost
+    forceMultiplier: 1.4,           // Multiplicateur de force motrice pendant le boost
     force: 5700,                     // Poussée directe du boost en N
     topSpeedBonus: 12.0,             // Bonus de vitesse de pointe pendant le boost (m/s)
-    tokenCount: 7,                   // Nombre de jetons de boost
-    normalBonus: 25,                 // Boost donné par un jeton normal (%)
-    rareBonus: 40,                   // Boost donné par un jeton rare (%)
-    slowdownTokenCount: 7,           // Nombre de jetons ralentisseurs
+    tokenCount: 8,                   // Nombre de jetons de boost (7 bleus + 1 doré)
+    normalBonus: 25,                 // Valeur de repli d'un jeton normal (%)
+    rankBonusStep: 8,                // Multiplicateur de boost selon le classement (8 × place)
+    rareBonus: 40,                   // Boost minimal donné par un jeton rare (%)
+    slowdownTokenCount: 9,           // Nombre de jetons ralentisseurs rouges
     slowdownFactor: 0.75,            // Multiplicateur de vitesse du malus
     slowdownDuration: 3.0,           // Durée du malus (s)
     activeMinTime: 3.0,              // Durée min d'activité d'un jeton (s)
@@ -115,9 +116,9 @@ export const CONFIG = {
   },
 
   ai: {
-    lateralAccel: 14.5,              // Accélération latérale max tolérée par l'IA
-    brakeDecel: 10.5,                // Décélération de freinage de l'IA
-    maxSpeed: 80,                    // Vitesse max de référence de l'IA
+    lateralAccel: 19.5,              // Accélération latérale max tolérée par l'IA
+    brakeDecel: 15.0,                // Décélération de freinage de l'IA
+    maxSpeed: 108,                   // Vitesse max de référence de l'IA
     lineMargin: 2.5,                 // Marge de l'IA par rapport aux bords de piste (m)
     unstuckTime: 5.0,                // Délai (s) avant replacement d'un bot bloqué
     relaunchSpeed: 11.0,             // Vitesse (m/s) donnée à un bot replacé
@@ -126,54 +127,54 @@ export const CONFIG = {
   difficulty: {
     easy: {
       label: 'Facile',               // Nom affiché
-      skill: 0.95,                   // Niveau de compétence global
-      maxSpeedFactor: 0.75,          // Part de la vitesse max utilisée
-      speedSpread: 0.040,            // Écart aléatoire de vitesse entre bots
-      brakeLookaheadMult: 1.5,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      skill: 0.86,                   // Niveau de compétence global
+      maxSpeedFactor: 0.86,          // Part de la vitesse max utilisée
+      speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 1.25,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.82,       // Vitesse conservée en virage
-      steerGain: 1.55,               // Précision du volant
-      steerRateMult: 0.68,           // Rapidité du volant
-      apexCut: 0.0,                  // Tendance à couper à la corde
-      boostSeekWeight: 1.75,         // Priorité donnée à la chasse aux boosts
-      boostMaxLatDeviation: 3.8,     // Déviation latérale max pour un boost (m)
-      boostThreshold: 10,            // Boost min avant utilisation (%)
-      boostMaxCurvature: 0.0028,     // Courbure max pour booster
-      corridorHalfWidth: 1.5,        // Liberté de déviation autour de la trajectoire (m)
-      overtakeAggression: 1.30,      // Agressivité des dépassements
+      steerGain: 1.80,               // Précision du volant
+      steerRateMult: 0.88,           // Rapidité du volant
+      apexCut: 0.15,                 // Tendance à couper à la corde
+      boostSeekWeight: 1.90,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 3.4,     // Déviation latérale max pour un boost (m)
+      boostThreshold: 6,             // Boost min avant utilisation (%)
+      boostMaxCurvature: 0.0030,     // Courbure max pour booster
+      corridorHalfWidth: 0.6,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 1.35,      // Agressivité des dépassements
     },
     normal: {
       label: 'Moyen',                // Nom affiché
-      skill: 1.05,                   // Niveau de compétence global
-      maxSpeedFactor: 0.90,          // Part de la vitesse max utilisée
-      speedSpread: 0.045,            // Écart aléatoire de vitesse entre bots
-      brakeLookaheadMult: 1.08,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      skill: 1.00,                   // Niveau de compétence global
+      maxSpeedFactor: 1.00,          // Part de la vitesse max utilisée
+      speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 0.95,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.94,       // Vitesse conservée en virage
-      steerGain: 2.40,               // Précision du volant
-      steerRateMult: 1.00,           // Rapidité du volant
-      apexCut: 0.28,                 // Tendance à couper à la corde
-      boostSeekWeight: 2.80,         // Priorité donnée à la chasse aux boosts
-      boostMaxLatDeviation: 7.5,     // Déviation latérale max pour un boost (m)
+      steerGain: 2.15,               // Précision du volant
+      steerRateMult: 1.10,           // Rapidité du volant
+      apexCut: 0.45,                 // Tendance à couper à la corde
+      boostSeekWeight: 2.40,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 4.0,     // Déviation latérale max pour un boost (m)
       boostThreshold: 0,             // Boost min avant utilisation (%)
-      boostMaxCurvature: 0.0048,     // Courbure max pour booster
-      corridorHalfWidth: 3.2,        // Liberté de déviation autour de la trajectoire (m)
-      overtakeAggression: 1.95,      // Agressivité des dépassements
+      boostMaxCurvature: 0.0042,     // Courbure max pour booster
+      corridorHalfWidth: 0.8,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 1.80,      // Agressivité des dépassements
     },
     hard: {
       label: 'Difficile',            // Nom affiché
-      skill: 1.15,                   // Niveau de compétence global
-      maxSpeedFactor: 1.04,          // Part de la vitesse max utilisée
-      speedSpread: 0.048,            // Écart aléatoire de vitesse entre bots
-      brakeLookaheadMult: 0.60,      // Distance d'anticipation du freinage (plus bas = freine tard)
-      cornerSpeedFactor: 1.05,       // Vitesse conservée en virage
-      steerGain: 3.15,               // Précision du volant
-      steerRateMult: 1.35,           // Rapidité du volant
-      apexCut: 0.88,                 // Tendance à couper à la corde
-      boostSeekWeight: 3.80,         // Priorité donnée à la chasse aux boosts
-      boostMaxLatDeviation: 10,     // Déviation latérale max pour un boost (m)
+      skill: 1.14,                   // Niveau de compétence global
+      maxSpeedFactor: 1.16,          // Part de la vitesse max utilisée
+      speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
+      brakeLookaheadMult: 0.72,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      cornerSpeedFactor: 1.02,       // Vitesse conservée en virage
+      steerGain: 2.35,               // Précision du volant
+      steerRateMult: 1.22,           // Rapidité du volant
+      apexCut: 0.70,                 // Tendance à couper à la corde
+      boostSeekWeight: 2.85,         // Priorité donnée à la chasse aux boosts
+      boostMaxLatDeviation: 4.5,     // Déviation latérale max pour un boost (m)
       boostThreshold: 0,             // Boost min avant utilisation (%)
-      boostMaxCurvature: 0.0095,     // Courbure max pour booster
-      corridorHalfWidth: 4.2,        // Liberté de déviation autour de la trajectoire (m)
-      overtakeAggression: 2.75,      // Agressivité des dépassements
+      boostMaxCurvature: 0.0052,     // Courbure max pour booster
+      corridorHalfWidth: 0.9,        // Liberté de déviation autour de la trajectoire (m)
+      overtakeAggression: 2.30,      // Agressivité des dépassements
     },
   },
 };
@@ -207,9 +208,9 @@ export const VEHICLE_MODIFIERS = {
   formula: {
     label: 'Monoplace',              // Nom affiché
     topSpeed: 0.85,                  // Multiplicateur de vitesse de pointe (-15%)
-    acceleration: 1.05,              // Multiplicateur d'accélération (+10%)
-    grip: 1.2,                      // Multiplicateur d'adhérence / tenue de route (+25%)
-    braking: 1.2,                   // Multiplicateur de freinage (+22%)
+    acceleration: 1.10,              // Multiplicateur d'accélération (+10%)
+    grip: 1.25,                      // Multiplicateur d'adhérence / tenue de route (+25%)
+    braking: 1.22,                   // Multiplicateur de freinage (+22%)
     get description() {
       return formatVehicleDescription(this);
     },
@@ -461,6 +462,11 @@ export const BOT_PROFILES = [
   { name: 'Blaze',   bodyType: 'supercar', color: '#fdd835', rims: 'sport', rimFinish: 'black',  spoiler: 'gt'  },
   { name: 'Nova',    bodyType: 'formula',  color: '#d500f9', rims: 'disc',  rimFinish: 'gold',   spoiler: 'gt'  },
   { name: 'Tempest', bodyType: 'muscle',   color: '#37474f', rims: 'multi', rimFinish: 'silver', spoiler: 'gt'  },
+  { name: 'Shadow',  bodyType: 'supercar', color: '#1a237e', rims: 'sport', rimFinish: 'black',  spoiler: 'gt'  },
+  { name: 'Zenith',  bodyType: 'formula',  color: '#00bfa5', rims: 'multi', rimFinish: 'gold',   spoiler: 'gt'  },
+  { name: 'Hydra',   bodyType: 'muscle',   color: '#c62828', rims: 'star',  rimFinish: 'black',  spoiler: 'lip' },
+  { name: 'Eclipse', bodyType: 'supercar', color: '#ad1457', rims: 'disc',  rimFinish: 'silver', spoiler: 'gt'  },
+  { name: 'Raptor',  bodyType: 'formula',  color: '#76ff03', rims: 'sport', rimFinish: 'black',  spoiler: 'gt'  },
 ];
 
 export const DEFAULT_PLAYER_CARS = [

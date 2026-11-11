@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=39';
-import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=39';
+import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=40';
+import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=40';
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -121,7 +121,7 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
   const boostAxis = makeZeroSumAxis(0.32);
   const aggrAxis = makeZeroSumAxis(0.25);
   const reactAxis = makeZeroSumAxis(0.24);
-  const laneAxis = makeZeroSumAxis(3.20);
+  const laneAxis = makeZeroSumAxis(1.10);
 
   const behaviorKeys = Object.keys(AI_BEHAVIOR_PROFILES);
   const profiles = [];
@@ -129,8 +129,8 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
   for (let i = 0; i < n; i++) {
     const behaviorKey = behaviorKeys[i % behaviorKeys.length] || 'balanced';
     const speedDelta = Number(speedAxis[i].toFixed(4));
-    const targetSpeedFactor = Number(clamp(mean.targetSpeedFactor + speedDelta, 0.62, 1.15).toFixed(4));
-    const skillLevel = Number(clamp(mean.skillLevel + speedDelta * 1.4, 0.25, 1.0).toFixed(3));
+    const targetSpeedFactor = Number(clamp(mean.targetSpeedFactor + speedDelta, 0.65, 1.22).toFixed(4));
+    const skillLevel = Number(clamp(mean.skillLevel + speedDelta * 1.4, 0.30, 1.15).toFixed(3));
 
     profiles.push({
       botIndex: i,
@@ -139,20 +139,20 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
       skillLevel,
       speedDelta,
       targetSpeedFactor,
-      brakeLookaheadMult: Number(clamp(mean.brakeLookaheadMult - speedDelta * 0.45 + brakeAxis[i], 0.55, 1.85).toFixed(3)),
-      cornerSpeedFactor: Number(clamp(mean.cornerSpeedFactor + speedDelta * 0.40 + cornerAxis[i], 0.72, 1.22).toFixed(3)),
-      steerGain: Number(clamp(mean.steerGain + steerAxis[i], 1.25, 3.35).toFixed(3)),
-      steerRateMult: Number(clamp(mean.steerRateMult + steerAxis[i] * 0.45, 0.68, 1.85).toFixed(3)),
-      apexCut: Number(clamp(mean.apexCut + apexAxis[i], 0.08, 1.0).toFixed(3)),
-      boostSeekWeight: Number(clamp(mean.boostSeekWeight + boostAxis[i], 0.90, 2.95).toFixed(3)),
-      boostMaxLatDeviation: Number(clamp(mean.boostMaxLatDeviation + boostAxis[i] * 2.2, 3.2, 8.8).toFixed(2)),
-      boostThreshold: Math.round(clamp(mean.boostThreshold - boostAxis[i] * 6, 1, 28)),
-      boostMaxCurvature: Number(clamp(mean.boostMaxCurvature + apexAxis[i] * 0.0018, 0.0025, 0.012).toFixed(5)),
-      corridorHalfWidth: Number(clamp(mean.corridorHalfWidth + Math.abs(aggrAxis[i]) * 0.6, 0.5, 3.2).toFixed(2)),
-      decisionRate: Number(clamp(mean.decisionRate + reactAxis[i], 0.95, 2.95).toFixed(3)),
-      overtakeAggression: Number(clamp(mean.overtakeAggression + aggrAxis[i], 0.60, 1.75).toFixed(3)),
-      lateralSteeringForce: Number(clamp(mean.lateralSteeringForce + aggrAxis[i] * 0.45, 1.75, 3.20).toFixed(3)),
-      preferredOffset: Number(clamp(laneAxis[i], -2.35, 2.35).toFixed(2)),
+      brakeLookaheadMult: Number(clamp(mean.brakeLookaheadMult - speedDelta * 0.45 + brakeAxis[i], 0.40, 1.75).toFixed(3)),
+      cornerSpeedFactor: Number(clamp(mean.cornerSpeedFactor + speedDelta * 0.40 + cornerAxis[i], 0.75, 1.25).toFixed(3)),
+      steerGain: Number(clamp(mean.steerGain + steerAxis[i], 1.35, 3.60).toFixed(3)),
+      steerRateMult: Number(clamp(mean.steerRateMult + steerAxis[i] * 0.45, 0.72, 1.85).toFixed(3)),
+      apexCut: Number(clamp(mean.apexCut + apexAxis[i], 0.10, 1.0).toFixed(3)),
+      boostSeekWeight: Number(clamp(mean.boostSeekWeight + boostAxis[i], 1.10, 4.20).toFixed(3)),
+      boostMaxLatDeviation: Number(clamp(mean.boostMaxLatDeviation + boostAxis[i] * 2.2, 3.5, 11.0).toFixed(2)),
+      boostThreshold: Math.round(clamp(mean.boostThreshold - boostAxis[i] * 6, 0, 28)),
+      boostMaxCurvature: Number(clamp(mean.boostMaxCurvature + apexAxis[i] * 0.0018, 0.0028, 0.016).toFixed(5)),
+      corridorHalfWidth: Number(clamp(mean.corridorHalfWidth + Math.abs(aggrAxis[i]) * 0.35, 0.4, 1.8).toFixed(2)),
+      decisionRate: Number(clamp(mean.decisionRate + reactAxis[i], 1.00, 3.10).toFixed(3)),
+      overtakeAggression: Number(clamp(mean.overtakeAggression + aggrAxis[i], 0.70, 3.10).toFixed(3)),
+      lateralSteeringForce: Number(clamp(mean.lateralSteeringForce + aggrAxis[i] * 0.45, 1.85, 3.80).toFixed(3)),
+      preferredOffset: Number(clamp(laneAxis[i], -0.85, 0.85).toFixed(2)),
     });
   }
 
@@ -188,7 +188,8 @@ export class AIDriver {
     // Écart individuel à somme nulle autour de la moyenne du mode de difficulté
     this.speedDelta = Number(opts.speedDelta ?? profile.speedDelta ?? 0);
     const vModTop = VEHICLE_MODIFIERS[this.vehicle.bodyType]?.topSpeed || 1.0;
-    const bodyNorm = 1.0 / (0.25 + 0.75 * vModTop);
+    // Compense légèrement les châssis à faible Vmax sans jamais brider les supercars/F1
+    const bodyNorm = vModTop < 1.0 ? Math.min(1.06, 1.0 / (0.40 + 0.60 * vModTop)) : 1.0;
 
     // Paramètres uniques de l'IA de ce bot (moyenne proportionnelle à la difficulté)
     if (opts.aiProfile) {
@@ -206,50 +207,50 @@ export class AIDriver {
       this.corridorHalfWidth = profile.corridorHalfWidth;
       this.decisionRate = profile.decisionRate;
     } else if (diffKey === 'easy') {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.75;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.66, 0.84);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.88;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.78, 0.96);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
-      this.brakeLookaheadMult = 1.45 * (1 - this.speedDelta * 0.35);
-      this.cornerSpeedFactor = 0.85 * (1 + this.speedDelta * 0.40);
-      this.steerGain = profile.steerGain ?? 1.65;
+      this.brakeLookaheadMult = 1.15 * (1 - this.speedDelta * 0.35);
+      this.cornerSpeedFactor = 0.93 * (1 + this.speedDelta * 0.40);
+      this.steerGain = profile.steerGain ?? 1.90;
       this.steerRateMult = profile.steerRateMult ?? 0.85;
       this.apexCut = profile.apexCut ?? 0.20;
-      this.boostSeekWeight = profile.boostSeekWeight ?? 1.35;
+      this.boostSeekWeight = profile.boostSeekWeight ?? 2.10;
       this.boostMaxLatDeviation = profile.boostMaxLatDeviation ?? 4.5;
-      this.boostThreshold = profile.boostThreshold ?? 18;
-      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.0035;
-      this.corridorHalfWidth = profile.corridorHalfWidth ?? 0.6;
-      this.decisionRate = profile.decisionRate ?? 1.2;
+      this.boostThreshold = profile.boostThreshold ?? 5;
+      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.0045;
+      this.corridorHalfWidth = profile.corridorHalfWidth ?? 2.0;
+      this.decisionRate = profile.decisionRate ?? 1.4;
     } else if (diffKey === 'hard') {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 1.05;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.98, 1.12);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 1.10;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 1.02, 1.20);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
-      this.brakeLookaheadMult = 0.72 * (1 - this.speedDelta * 0.5);
-      this.cornerSpeedFactor = 1.08 * (1 + this.speedDelta * 0.45);
-      this.steerGain = profile.steerGain ?? 2.85;
-      this.steerRateMult = profile.steerRateMult ?? 1.55;
-      this.apexCut = profile.apexCut ?? Math.max(0.92, this.behavior.apexCut || 0.92);
-      this.boostSeekWeight = profile.boostSeekWeight ?? 2.40;
-      this.boostMaxLatDeviation = profile.boostMaxLatDeviation ?? 7.5;
-      this.boostThreshold = profile.boostThreshold ?? 2;
-      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.0095;
-      this.corridorHalfWidth = profile.corridorHalfWidth ?? (this.behavior.corridorHalfWidth ?? 2.8);
-      this.decisionRate = profile.decisionRate ?? 2.5;
+      this.brakeLookaheadMult = 0.48 * (1 - this.speedDelta * 0.5);
+      this.cornerSpeedFactor = 1.10 * (1 + this.speedDelta * 0.45);
+      this.steerGain = profile.steerGain ?? 3.25;
+      this.steerRateMult = profile.steerRateMult ?? 1.40;
+      this.apexCut = profile.apexCut ?? Math.max(0.90, this.behavior.apexCut || 0.90);
+      this.boostSeekWeight = profile.boostSeekWeight ?? 3.90;
+      this.boostMaxLatDeviation = profile.boostMaxLatDeviation ?? 10.0;
+      this.boostThreshold = profile.boostThreshold ?? 0;
+      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.012;
+      this.corridorHalfWidth = profile.corridorHalfWidth ?? (this.behavior.corridorHalfWidth ?? 4.2);
+      this.decisionRate = profile.decisionRate ?? 2.6;
     } else {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.91;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.84, 0.98);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.98;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.90, 1.06);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
-      this.brakeLookaheadMult = (this.behavior.brakeLookaheadMult ?? 1.10) * (1 - this.speedDelta * 0.4);
-      this.cornerSpeedFactor = (this.behavior.cornerSpeedFactor ?? 0.96) * (1 + this.speedDelta * 0.45);
-      this.steerGain = profile.steerGain ?? 2.25;
-      this.steerRateMult = profile.steerRateMult ?? 1.20;
-      this.apexCut = profile.apexCut ?? Math.max(0.45, this.behavior.apexCut ?? 0.45);
-      this.boostSeekWeight = profile.boostSeekWeight ?? 1.95;
-      this.boostMaxLatDeviation = profile.boostMaxLatDeviation ?? 6.2;
-      this.boostThreshold = profile.boostThreshold ?? (this.behavior.boostThreshold ?? 8);
-      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.0055;
-      this.corridorHalfWidth = profile.corridorHalfWidth ?? (this.behavior.corridorHalfWidth ?? 1.6);
-      this.decisionRate = profile.decisionRate ?? 1.8;
+      this.brakeLookaheadMult = (this.behavior.brakeLookaheadMult ?? 0.85) * (1 - this.speedDelta * 0.4);
+      this.cornerSpeedFactor = (this.behavior.cornerSpeedFactor ?? 1.00) * (1 + this.speedDelta * 0.45);
+      this.steerGain = profile.steerGain ?? 2.50;
+      this.steerRateMult = profile.steerRateMult ?? 1.08;
+      this.apexCut = profile.apexCut ?? Math.max(0.48, this.behavior.apexCut ?? 0.48);
+      this.boostSeekWeight = profile.boostSeekWeight ?? 2.95;
+      this.boostMaxLatDeviation = profile.boostMaxLatDeviation ?? 7.5;
+      this.boostThreshold = profile.boostThreshold ?? (this.behavior.boostThreshold ?? 0);
+      this.boostMaxCurvature = profile.boostMaxCurvature ?? 0.0068;
+      this.corridorHalfWidth = profile.corridorHalfWidth ?? (this.behavior.corridorHalfWidth ?? 3.2);
+      this.decisionRate = profile.decisionRate ?? 2.0;
     }
 
     // Applique les multiplicateurs physiques au véhicule du bot
@@ -683,29 +684,27 @@ export class AIDriver {
       this.stuckTimer = Math.max(0, this.stuckTimer - dt * 2.5);
     }
 
-    const maxLat = L.halfWidth - 1.30;
+    const maxLat = Math.max(2.0, L.halfWidth - 1.85);
+    const curvNow = Math.abs(L.curvature ? L.curvature[v.trackIndex] : L.racingCurvature[v.trackIndex]);
+    const safeCornerMaxLat = curvNow > 0.0045 ? Math.max(2.5, maxLat - 1.25) : maxLat;
 
     // 1) Ligne de course stable et tendue (élimination définitive du louvoiement sinusoïdal)
     const targetCorridorOffset = clamp(this.preferredOffset, -this.corridorHalfWidth, this.corridorHalfWidth);
     this.lateralOffset = damp(this.lateralOffset, targetCorridorOffset, 0.6 * this.decisionRate, dt);
 
     // 2) Détection des jetons de boost (attraction) et ralentisseurs rouges (répulsion) dans le cône < 32m, < 58,5°
-    const tokenEval = this._evaluateTokensInFrontCone(tokens, pos, maxLat);
-    const tokenDampRate = (tokenEval.priorityBoost ? 9.5 : 5.8) * REACTION_SPEED_MULT;
+    const tokenEval = this._evaluateTokensInFrontCone(tokens, pos, safeCornerMaxLat);
+    const tokenDampRate = tokenEval.priorityBoost ? 6.2 : 4.8;
     this.tokenOffset = damp(this.tokenOffset, tokenEval.shift, tokenDampRate, dt);
 
-    // 3) Dépassement dynamique incisif (latence de réaction réduite de 30%)
-    const overtakeEval = this._evaluateDynamicOvertake(allVehicles, pos, maxLat);
+    // 3) Dépassement dynamique incisif sans à-coups latéraux en peloton
+    const overtakeEval = this._evaluateDynamicOvertake(allVehicles, pos, safeCornerMaxLat);
     const targetOvertakeShift = overtakeEval.targetOvertakeShift;
     const emergencyBrake = overtakeEval.emergencyBrake;
-    this.overtakeOffset = damp(
-      this.overtakeOffset,
-      targetOvertakeShift,
-      7.2 * (this.overtakeAggression || beh.overtakeAggression || 1.0) * REACTION_SPEED_MULT,
-      dt
-    );
+    const overtakeDampRate = clamp(4.2 * (this.overtakeAggression || beh.overtakeAggression || 1.0), 4.0, 8.2);
+    this.overtakeOffset = damp(this.overtakeOffset, targetOvertakeShift, overtakeDampRate, dt);
 
-    // Hiérarchie des décalages latéraux avec autorité accrue
+    // Hiérarchie des décalages latéraux
     let activeLatShift = this.lateralOffset;
     if (tokenEval.priorityBoost && Math.abs(this.tokenOffset) > 0.08) {
       activeLatShift = this.tokenOffset;
@@ -717,10 +716,42 @@ export class AIDriver {
       activeLatShift = this.lateralOffset + this.tokenOffset * 0.85 + this.overtakeOffset * 0.70;
     }
 
-    // Point de visée anticipé continu (échantillonnage spline fluide le long de s + lookDist)
-    // Résout définitivement les micro-saccades causées par le saut discret d'index de waypoints
+    // Sécurité anti-accrochage latéral en peloton : ne pas se déporter vers une voiture déjà à notre hauteur
+    if (allVehicles && allVehicles.length > 1) {
+      let sideBlockLeft = -safeCornerMaxLat;
+      let sideBlockRight = safeCornerMaxLat;
+      for (let i = 0; i < allVehicles.length; i++) {
+        const other = allVehicles[i];
+        if (!other || other === v) continue;
+        if (Math.abs(other.chassisBody.position.y - pos.y) > 4.5) continue;
+        const ds = wrapDelta(other.trackS, v.trackS, L.length);
+        if (Math.abs(ds) < 4.8) {
+          const dLat = other.trackLateral - v.trackLateral;
+          if (dLat > 0.6 && dLat < 3.5) {
+            sideBlockRight = Math.min(sideBlockRight, other.trackLateral - 2.3);
+          } else if (dLat < -0.6 && dLat > -3.5) {
+            sideBlockLeft = Math.max(sideBlockLeft, other.trackLateral + 2.3);
+          }
+        }
+      }
+      if (sideBlockLeft <= sideBlockRight) {
+        const curIdeal = L.racingLat[v.trackIndex] || 0;
+        const shiftedLat = curIdeal + activeLatShift;
+        if (shiftedLat > sideBlockRight) activeLatShift = sideBlockRight - curIdeal;
+        else if (shiftedLat < sideBlockLeft) activeLatShift = sideBlockLeft - curIdeal;
+      }
+    }
+
+    // Point de visée anticipé continu (raccourci progressivement en virage serré pour éviter de couper ou élargir)
     const speed = Math.max(0, v.forwardSpeed);
-    const lookDist = clamp(Math.max(16.0, speed * (1.05 + 0.15 * (this.decisionRate || 1.0))), 16.0, 78.0);
+    const probeIdx = (v.trackIndex + Math.round(18 / L.ds)) % n;
+    const rawCurvProbe = Math.abs(L.curvature ? L.curvature[probeIdx] : L.racingCurvature[probeIdx]);
+    const lookCurvFactor = clamp(1.0 - (Math.max(curvNow, rawCurvProbe) / 0.018) * 0.45, 0.52, 1.0);
+    const lookDist = clamp(
+      Math.max(15.0, speed * (0.90 + 0.10 * (this.decisionRate || 1.0)) * lookCurvFactor),
+      15.0,
+      56.0
+    );
     const targetS = wrap(v.trackS + lookDist, L.length);
 
     const fIdx = (targetS / L.ds) % n;
@@ -734,7 +765,7 @@ export class AIDriver {
     const cornerSign = Math.sign(signedCurvAhead);
     const apexShift = Math.abs(curvAhead) > 0.0035 ? cornerSign * (this.apexCut * 2.2) : 0;
     const idealRacingLat = L.racingLat[i0] * (1 - tFrac) + L.racingLat[i1] * tFrac;
-    const desiredLat = clamp(idealRacingLat + activeLatShift + apexShift, -maxLat, maxLat);
+    const desiredLat = clamp(idealRacingLat + activeLatShift + apexShift, -safeCornerMaxLat, safeCornerMaxLat);
 
     // Échantillonnage 3D continu sans aucune discontinuité
     const splineSample = L.sample(targetS, desiredLat);
@@ -776,7 +807,8 @@ export class AIDriver {
     const steerCmd = clamp(this.currentSteer, -1, 1);
 
     // Anticipation du freinage modulée par this.brakeLookaheadMult
-    const baseLook = (12 + speed * 0.75) * this.brakeLookaheadMult;
+    // Anticipation du freinage proportionnelle selon la vitesse et le terrain
+    const baseLook = (10 + speed * 0.65 + speed * speed * 0.004) * this.brakeLookaheadMult;
     const brakeLookSteps = Math.max(3, Math.round(baseLook / L.ds));
     let minProfileSpeed = Infinity;
     for (let s = 0; s <= brakeLookSteps; s += 2) {
@@ -784,16 +816,19 @@ export class AIDriver {
       if (L.speedProfile[idx] < minProfileSpeed) minProfileSpeed = L.speedProfile[idx];
     }
 
-    const vModTop = VEHICLE_MODIFIERS[v.bodyType]?.topSpeed || 1.0;
+    const vMod = VEHICLE_MODIFIERS[v.bodyType];
+    const vModTop = vMod?.topSpeed || 1.0;
+    const vModGrip = vMod?.grip || 1.0;
+    const gripCornerMult = clamp(Math.sqrt(clamp(vModGrip, 0.85, 1.25)), 0.96, 1.06);
     const maxAllowedSpeed = CONFIG.car.topSpeed * vModTop * this.maxSpeedFactor;
-    let targetSpeed = Math.min(maxAllowedSpeed, minProfileSpeed * this.cornerSpeedFactor);
+    let targetSpeed = Math.min(maxAllowedSpeed, minProfileSpeed * this.cornerSpeedFactor * gripCornerMult);
 
     if (v.finished) {
       targetSpeed *= 0.88;
     }
 
-    if (Math.abs(steerCmd) > 0.65 && this.difficultyKey !== 'hard') {
-      targetSpeed *= 0.92;
+    if (Math.abs(steerCmd) > 0.75 && this.difficultyKey === 'easy') {
+      targetSpeed *= 0.95;
     }
 
     const speedDiff = targetSpeed - speed;
@@ -801,20 +836,21 @@ export class AIDriver {
     let brake = emergencyBrake;
 
     if (speedDiff > -0.8 && emergencyBrake < 0.1) {
-      throttle = clamp(0.55 + speedDiff * 0.24, 0.30, 1.0);
-      if (Math.abs(steerCmd) > 0.82 && speed > 26 && this.difficultyKey !== 'hard') throttle *= 0.72;
+      throttle = speedDiff >= 0.35 ? 1.0 : clamp(0.68 + speedDiff * 0.85, 0.45, 1.0);
+      if (Math.abs(steerCmd) > 0.88 && speed > 28 && this.difficultyKey === 'easy') throttle *= 0.82;
     } else if (speedDiff < -1.6) {
       brake = Math.max(brake, clamp(-speedDiff / 12, 0.18, 0.98));
       throttle = 0;
     } else {
-      throttle = 0.22;
+      throttle = 0.28;
     }
 
     const curNow = Math.abs(L.racingCurvature[v.trackIndex]);
     const curAhead = Math.abs(curvAhead);
-    const isCornerExit = this.difficultyKey === 'hard' && curAhead < curNow * 0.88 && curAhead < 0.012;
-    const maxSteerForBoost = this.difficultyKey === 'hard' ? 0.38 : 0.22;
-    const minSpeedForBoost = this.difficultyKey === 'hard' ? 15 : 22;
+    const isCornerExit = (this.difficultyKey === 'hard' || this.difficultyKey === 'normal')
+      && curAhead < curNow * 0.88 && curAhead < 0.013;
+    const maxSteerForBoost = this.difficultyKey === 'hard' ? 0.42 : (this.difficultyKey === 'normal' ? 0.30 : 0.24);
+    const minSpeedForBoost = this.difficultyKey === 'hard' ? 14 : (this.difficultyKey === 'normal' ? 17 : 20);
 
     const useBoost = !v.finished
       && v.boostEnergy > this.boostThreshold

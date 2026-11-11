@@ -12,6 +12,8 @@
  *        positions (X, Y, Z), rotations (quaternion), vitesses, braquage et boost sans effet accordéon.
  */
 
+import { MAX_TOTAL_CARS } from '../config.js?v=40';
+
 const PACKET_SNAPSHOT = 101;
 const PACKET_GUEST_INPUT = 102;
 const PACKET_GUEST_STATE = 103;
@@ -147,10 +149,11 @@ export class NetworkManager {
     this._hostTxAccum = 0;
     this._guestTxAccum = 0;
 
-    // Tampons binaires plats pré-alloués par nombre de véhicules (1..10) pour l'envoi à 30 Hz sans GC
-    this._snapshotFloats = new Float32Array(HEADER_FLOATS + 10 * VEHICLE_FLOATS);
+    // Tampons binaires plats pré-alloués par nombre de véhicules (1..MAX_TOTAL_CARS) pour l'envoi temps réel sans GC
+    const maxCars = MAX_TOTAL_CARS || 15;
+    this._snapshotFloats = new Float32Array(HEADER_FLOATS + maxCars * VEHICLE_FLOATS);
     this._snapshotBuffersByCount = [];
-    for (let c = 0; c <= 10; c++) {
+    for (let c = 0; c <= maxCars; c++) {
       this._snapshotBuffersByCount[c] = new Float32Array(HEADER_FLOATS + c * VEHICLE_FLOATS);
     }
     this._inputFloats = new Float32Array(8);
@@ -1557,7 +1560,7 @@ export class NetworkManager {
     this._hostTxAccum %= NET_TICK_INTERVAL;
 
     const vehicles = raceScene.vehicles;
-    const count = Math.min(10, vehicles.length);
+    const count = Math.min(MAX_TOTAL_CARS || 15, vehicles.length);
     const buf = this._snapshotBuffersByCount[count] || this._snapshotFloats;
 
     this._txSeq = (this._txSeq + 1) % 1000000;

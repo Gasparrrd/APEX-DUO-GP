@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=39';
-import { clamp, wrap } from '../core/utils.js?v=39';
+import { CONFIG } from '../config.js?v=40';
+import { clamp, wrap } from '../core/utils.js?v=40';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [
@@ -97,36 +97,36 @@ export const TRACK_POINTS_LAKE = [
 ];
 
 /**
- * Circuit 5 : "Le Col de la Grotte" (Mountain Pass & Under-tunnel) — Tracé alpin spectaculaire [x, y, z] :
- *  1. Grande Ligne Droite (Départ/Arrivée) au niveau du sol (Y = 0) longeant le canyon Sud (z = 220)
- *  2. Ascension & Épingles de la Montagne Est (lacets serrés et chicanes à flanc de falaise, Y grimpe jusqu'à +35.5m)
- *  3. Piste Supérieure sur la crête rocheuse sommitale (Y = 35.5m, z = -35) avec glissières doublées et vue plongeante
+ * Circuit 5 : "Le Col de la Grotte" (Mountain Pass & Under-tunnel) — Format XL (longueur x1,5 / hauteur x2) [x, y, z] :
+ *  1. Grande Ligne Droite (Départ/Arrivée) au niveau du sol (Y = 0) longeant le canyon Sud (z = 540)
+ *  2. Ascension & Épingles de la Montagne Est (lacets serrés et chicanes à flanc de falaise, Y grimpe jusqu'à +71m)
+ *  3. Piste Supérieure sur la crête rocheuse sommitale (Y = 71.2m, z = -52.5) avec glissières doublées et vue plongeante
  *  4. Grande descente rapide sur le versant Nord-Ouest plongeant vers l'entrée Nord du tunnel (Y -> 0.5m)
- *  5. Piste Inférieure & Long Tunnel Rocheux (x = 0, z de -100 à +25, Y = 0.5m) passant 35m EN DESSOUS de la crête sommitale
- *  6. Grand Pont / Viaduc à arches (x = 0, z de +55 à +135, Y = 4.2m) enjambant la rivière animée du canyon avant le retour départ
+ *  5. Piste Inférieure & Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m) passant 70m EN DESSOUS de la crête sommitale
+ *  6. Grand Pont / Viaduc à arches (x = 0, z de +78 à +186, Y culmine à 13.6m) enjambant la rivière animée du canyon avant le retour départ
  */
 export const TRACK_POINTS_GROTTO = [
-  // 1. Très Grande Ligne Droite du Canyon Sud (Départ / Arrivée à Y = 0, z = 360, ~540 m de pleine vitesse)
-  [-170, 0.0, 360], [-65, 0.0, 360], [45, 0.0, 360], [155, 0.0, 360], [265, 0.0, 360],
-  // 2. Grande Courbe Est & L'Ascension des Lacets Alpins (Y grimpe progressivement de 0 à +35.6m)
-  [355, 1.8, 344], [435, 5.2, 286], [482, 9.5, 198], [462, 13.8, 108],
-  [382, 17.5, 62], [328, 20.8, 4], [358, 24.0, -58],         // Épingle alpine 1 & corniche de falaise
-  [442, 27.2, -104], [488, 30.2, -168], [448, 32.8, -234],   // Grande boucle orientale & Épingle 2
-  [355, 34.4, -242], [258, 35.0, -190], [192, 35.3, -108], [138, 35.5, -52],
-  // 3. La Piste Supérieure (Crête rocheuse sommitale à Y = 35.6m, passant 35m AU-DESSUS du tunnel en (0, -35))
-  [82, 35.6, -36], [40, 35.6, -35], [0, 35.6, -35], [-40, 35.6, -35], [-82, 35.6, -36], [-138, 35.3, -44],
-  // 4. Grande Descente Rapide & Vallée Nord-Ouest Haute Vitesse (Y plonge de 35.3m à 0.5m)
-  [-218, 31.4, -68], [-312, 25.2, -108], [-405, 18.5, -154],
-  [-472, 12.2, -222], [-482, 7.0, -302], [-422, 3.4, -368],
-  [-322, 1.6, -388], [-205, 0.9, -368], [-105, 0.6, -318],
-  [-32, 0.5, -244], [0, 0.5, -166],
-  // 5. La Piste Inférieure & Le Long Tunnel Rocheux (x = 0, z de -105 à +22, Y = 0.5m, soit 35m SOUS la crête !)
-  [0, 0.5, -105], [0, 0.5, -60], [0, 0.5, -20], [0, 0.5, 22],
-  // 6. Le Grand Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +52 à +124, Y culmine à 6.8m)
-  [0, 3.4, 52], [0, 6.8, 88], [0, 4.0, 124],
-  // 7. Grande Enchaînement Sud-Ouest du Canyon & Retour Ligne Droite (large rayon fluide vers z = 360)
-  [-32, 1.6, 166], [-106, 0.6, 194], [-208, 0.2, 204], [-316, 0.0, 214],
-  [-404, 0.0, 248], [-432, 0.0, 302], [-382, 0.0, 346], [-285, 0.0, 360],
+  // 1. Très Grande Ligne Droite du Canyon Sud (Départ / Arrivée à Y = 0, z = 540, ~825 m de pleine vitesse)
+  [-255, 0.0, 540], [-98, 0.0, 540], [68, 0.0, 540], [232, 0.0, 540], [398, 0.0, 540],
+  // 2. Grande Courbe Est & L'Ascension des Lacets Alpins (Y grimpe progressivement de 0 à +71.0m)
+  [532, 3.6, 516], [652, 10.4, 429], [723, 19.0, 297], [693, 27.6, 162],
+  [573, 35.0, 93], [492, 41.6, 6], [537, 48.0, -87],           // Épingle alpine 1 & corniche de falaise
+  [663, 54.4, -156], [732, 60.4, -252], [672, 65.6, -351],    // Grande boucle orientale & Épingle 2
+  [532, 68.8, -363], [387, 70.0, -285], [288, 70.6, -162], [207, 71.0, -78],
+  // 3. La Piste Supérieure (Crête rocheuse sommitale à Y = 71.2m, passant 70m AU-DESSUS du tunnel en (0, -52.5))
+  [123, 71.2, -54], [60, 71.2, -52.5], [0, 71.2, -52.5], [-60, 71.2, -52.5], [-123, 71.2, -54], [-207, 70.6, -66],
+  // 4. Grande Descente Rapide & Vallée Nord-Ouest Haute Vitesse (Y plonge de 70.6m à 0.5m)
+  [-327, 62.8, -102], [-468, 50.4, -162], [-608, 37.0, -231],
+  [-708, 24.4, -333], [-723, 14.0, -453], [-633, 6.8, -552],
+  [-483, 3.2, -582], [-308, 1.8, -552], [-158, 1.2, -477],
+  [-48, 0.5, -366], [0, 0.5, -249],
+  // 5. La Piste Inférieure & Le Long Tunnel Rocheux (x = 0, z de -158 à +33, Y = 0.5m, soit 70m SOUS la crête !)
+  [0, 0.5, -158], [0, 0.5, -90], [0, 0.5, -30], [0, 0.5, 33],
+  // 6. Le Grand Pont / Viaduc au-dessus de la rivière du canyon (x = 0, z de +78 à +186, Y culmine à 13.6m)
+  [0, 6.8, 78], [0, 13.6, 132], [0, 8.0, 186],
+  // 7. Grande Enchaînement Sud-Ouest du Canyon & Retour Ligne Droite (large rayon fluide vers z = 540)
+  [-48, 3.2, 249], [-159, 1.2, 291], [-312, 0.4, 306], [-474, 0.0, 321],
+  [-606, 0.0, 372], [-648, 0.0, 453], [-573, 0.0, 519], [-428, 0.0, 540],
 ];
 
 export const CIRCUITS = {
@@ -380,7 +380,7 @@ export class TrackLayout {
    */
   isInTunnel(x, y, z) {
     if (this.circuitId === 'grotto') {
-      return Math.abs(x) <= 13.5 && z >= -102 && z <= 25 && y <= 10.5;
+      return Math.abs(x) <= 14.0 && z >= -156 && z <= 36 && y <= 12.0;
     }
     if (this.circuitId === 'valley') {
       return Math.abs(x) <= 16.0 && Math.abs(z) <= 14.0 && y <= 5.5;
