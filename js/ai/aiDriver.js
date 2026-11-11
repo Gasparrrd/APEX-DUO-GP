@@ -11,8 +11,8 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=40';
-import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=40';
+import { CONFIG, AI_BEHAVIOR_PROFILES, VEHICLE_MODIFIERS } from '../config.js?v=41';
+import { clamp, damp, wrap, wrapDelta } from '../core/utils.js?v=41';
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -819,7 +819,7 @@ export class AIDriver {
     const vMod = VEHICLE_MODIFIERS[v.bodyType];
     const vModTop = vMod?.topSpeed || 1.0;
     const vModGrip = vMod?.grip || 1.0;
-    const gripCornerMult = clamp(Math.sqrt(clamp(vModGrip, 0.85, 1.25)), 0.96, 1.06);
+    const gripCornerMult = clamp(Math.sqrt(clamp(vModGrip, 0.85, 1.25)), 0.96, 1.03);
     const maxAllowedSpeed = CONFIG.car.topSpeed * vModTop * this.maxSpeedFactor;
     let targetSpeed = Math.min(maxAllowedSpeed, minProfileSpeed * this.cornerSpeedFactor * gripCornerMult);
 

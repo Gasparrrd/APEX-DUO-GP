@@ -12,8 +12,8 @@
  *  - Zéro allocation mémoire par frame (`_projScratch`, `_sampleOutScratch`, `_crossingScratch` pré-alloués)
  */
 import * as THREE from 'three';
-import { CONFIG } from '../config.js?v=40';
-import { clamp, wrap } from '../core/utils.js?v=40';
+import { CONFIG } from '../config.js?v=41';
+import { clamp, wrap } from '../core/utils.js?v=41';
 
 /** Circuit 1 : Tracé technique plat d'origine [x, y, z]. */
 export const TRACK_POINTS_FLAT = [

@@ -5,8 +5,8 @@
  *  - Mode Spectateur (Plein écran 100%, masquage des compteurs joueurs, bandeau large en bas d'écran)
  *  - Mini-carte temps réel (jusqu'à 7 véhicules) et Écran de Classement Final avec accès Spectateur.
  */
-import { CONFIG } from '../config.js?v=40';
-import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=40';
+import { CONFIG } from '../config.js?v=41';
+import { clamp, formatTime, ordinalFr } from '../core/utils.js?v=41';
 import * as THREE from 'three';
 
 const _hudFwd = new THREE.Vector3();
@@ -219,9 +219,10 @@ export class HUDController {
         this.spectatorDriverName.textContent = `${tag} (${posLabel})`;
       }
       if (this.spectatorDriverLap) {
+        const bestLapStr = isFinite(target.bestLapTime) ? ` · MEILLEUR ${formatTime(target.bestLapTime)}` : '';
         this.spectatorDriverLap.textContent = target.finished
-          ? `TERMINÉ — CHRONO ${formatTime(target.finishTime)}`
-          : `TOUR ${lapNow} / ${lapTotal}`;
+          ? `TERMINÉ — CHRONO ${formatTime(target.finishTime)}${bestLapStr}`
+          : `TOUR ${lapNow} / ${lapTotal} · ${formatTime(target.currentLapTime)}${bestLapStr}`;
       }
       if (this.btnSpecResults) {
         this.btnSpecResults.classList.toggle('hidden', !spectatorInfo.canShowResults);
@@ -412,11 +413,14 @@ export class HUDController {
    * affiche le score et le chrono du ou des joueurs en haut de la carte,
    * juste au-dessus du bouton « Mode Spectateur ».
    */
-  renderFinalResults(standings) {
+  renderFinalResults(standings, raceTime = 0) {
     const tbody = document.getElementById('results-tbody');
+    const scrollWrap = document.getElementById('results-table-scroll');
     const subtitle = document.getElementById('results-winner-subtitle');
     const playerSummary = document.getElementById('results-player-summary');
     if (!tbody) return;
+
+    const prevScrollTop = scrollWrap ? scrollWrap.scrollTop : 0;
     tbody.innerHTML = '';
 
     const winner = standings[0];
@@ -426,18 +430,31 @@ export class HUDController {
         : `En tête de la course : ${winner.name}`;
     }
 
-    // Score et chrono du ou des joueurs humains (affiché juste au-dessus du bouton « Mode Spectateur »)
+    let overallBestLap = Infinity;
+    for (let i = 0; i < standings.length; i++) {
+      const bl = standings[i]?.bestLapTime;
+      if (isFinite(bl) && bl > 0 && bl < overallBestLap) {
+        overallBestLap = bl;
+      }
+    }
+
+    // Score, chrono et meilleur tour du ou des joueurs humains (affichés en haut de la modale)
     if (playerSummary) {
       const humanPlayers = standings.filter((v) => !v.isAI);
       if (humanPlayers.length > 0) {
-        playerSummary.innerHTML = humanPlayers.map((p) => `
-          <div class="player-score-card">
-            <span class="color-dot" style="background:${p.model.cfg.color}"></span>
-            <strong>${p.displayTag || p.name}</strong>
-            <span class="score-rank">${ordinalFr(p.rank)} / ${standings.length}</span>
-            <span class="score-time">Chrono : ${p.finished ? formatTime(p.finishTime) : formatTime(p.currentLapTime)}</span>
-          </div>
-        `).join('');
+        playerSummary.innerHTML = humanPlayers.map((p) => {
+          const totalStr = p.finished ? formatTime(p.finishTime) : formatTime(raceTime > 0 ? raceTime : p.currentLapTime);
+          const bestStr = isFinite(p.bestLapTime) ? formatTime(p.bestLapTime) : '--:--.---';
+          return `
+            <div class="player-score-card">
+              <span class="color-dot" style="background:${p.model.cfg.color}"></span>
+              <strong>${p.displayTag || p.name}</strong>
+              <span class="score-rank">${ordinalFr(p.rank)} / ${standings.length}</span>
+              <span class="score-time">Chrono : ${totalStr}</span>
+              <span class="score-best">Meilleur tour : ${bestStr}</span>
+            </div>
+          `;
+        }).join('');
         playerSummary.classList.remove('hidden');
       } else {
         playerSummary.innerHTML = '';
@@ -450,7 +467,10 @@ export class HUDController {
       if (!v.isAI) tr.classList.add('player-row');
       const totalTimeText = v.finished
         ? formatTime(v.finishTime)
-        : `En course (Tour ${Math.min(v.lap, v.totalLaps)}/${v.totalLaps})`;
+        : `En course · ${raceTime > 0 ? `${formatTime(raceTime)} · ` : ''}T${Math.min(v.lap, v.totalLaps)}/${v.totalLaps}`;
+      const hasBest = isFinite(v.bestLapTime) && v.bestLapTime > 0;
+      const isOverallBest = hasBest && isFinite(overallBestLap) && Math.abs(v.bestLapTime - overallBestLap) < 1e-4;
+      const bestLapText = hasBest ? formatTime(v.bestLapTime) : '--:--.---';
       tr.innerHTML = `
         <td class="col-rank"><span class="rank-pill rank-${idx + 1}">${ordinalFr(idx + 1)}</span></td>
         <td class="col-driver">
@@ -459,9 +479,13 @@ export class HUDController {
           ${!v.isAI ? `<span class="tag-human">${v.id.toUpperCase()}</span>` : ''}
         </td>
         <td class="col-time">${totalTimeText}</td>
-        <td class="col-best">${isFinite(v.bestLapTime) ? formatTime(v.bestLapTime) : '--:--.---'}</td>
+        <td class="col-best${isOverallBest ? ' best-lap-record' : ''}">${bestLapText}${isOverallBest ? '<span class="best-lap-badge" title="Meilleur tour de la course">⚡</span>' : ''}</td>
       `;
       tbody.appendChild(tr);
     });
+
+    if (scrollWrap) {
+      scrollWrap.scrollTop = prevScrollTop;
+    }
   }
 }

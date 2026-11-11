@@ -11,11 +11,11 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, computeVehicleStats } from '../config.js?v=40';
-import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=40';
-import { soundManager } from '../core/audio.js?v=40';
-import { CarModel } from '../gfx/carModel.js?v=40';
-import { blobShadowTexture } from '../gfx/textures.js?v=40';
+import { CONFIG, computeVehicleStats } from '../config.js?v=41';
+import { clamp, damp, moveTowards, wrapDelta } from '../core/utils.js?v=41';
+import { soundManager } from '../core/audio.js?v=41';
+import { CarModel } from '../gfx/carModel.js?v=41';
+import { blobShadowTexture } from '../gfx/textures.js?v=41';
 
 const C = CONFIG.car;
 const B = CONFIG.boost;

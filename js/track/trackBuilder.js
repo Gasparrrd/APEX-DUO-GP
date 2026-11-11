@@ -9,13 +9,13 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=40';
-import { seededRandom, wrap } from '../core/utils.js?v=40';
+import { CONFIG } from '../config.js?v=41';
+import { seededRandom, wrap } from '../core/utils.js?v=41';
 import {
   asphaltTexture, grassTexture, curbTexture, checkerTexture,
   blobShadowTexture, billboardTexture, chevronTexture,
   distanceBoardTexture, gantryTexture,
-} from '../gfx/textures.js?v=40';
+} from '../gfx/textures.js?v=41';
 
 export class TrackBuilder {
   /**

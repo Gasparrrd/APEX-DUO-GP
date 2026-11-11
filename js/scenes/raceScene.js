@@ -13,18 +13,18 @@
  */
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS } from '../config.js?v=40';
-import { TrackLayout } from '../track/trackLayout.js?v=40';
-import { TrackBuilder } from '../track/trackBuilder.js?v=40';
-import { BoostTokenSystem } from '../track/boostTokens.js?v=40';
-import { Vehicle } from '../physics/vehicle.js?v=40';
-import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=40';
-import { ChaseCamera } from '../gfx/chaseCamera.js?v=40';
-import { ParticleSystem } from '../gfx/particles.js?v=40';
-import { WeatherSystem } from '../gfx/weather.js?v=40';
-import { soundManager } from '../core/audio.js?v=40';
-import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=40';
-import { clamp } from '../core/utils.js?v=40';
+import { CONFIG, CONTROLS, BOT_PROFILES, AI_BOT_NAMES, AI_BEHAVIOR_PROFILES, WEATHER_MODIFIERS, MAX_TOTAL_CARS, computeRankBoostBonus } from '../config.js?v=41';
+import { TrackLayout } from '../track/trackLayout.js?v=41';
+import { TrackBuilder } from '../track/trackBuilder.js?v=41';
+import { BoostTokenSystem } from '../track/boostTokens.js?v=41';
+import { Vehicle } from '../physics/vehicle.js?v=41';
+import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=41';
+import { ChaseCamera } from '../gfx/chaseCamera.js?v=41';
+import { ParticleSystem } from '../gfx/particles.js?v=41';
+import { WeatherSystem } from '../gfx/weather.js?v=41';
+import { soundManager } from '../core/audio.js?v=41';
+import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=41';
+import { clamp } from '../core/utils.js?v=41';
 
 const _tmpQuatA = new THREE.Quaternion();
 const _tmpQuatB = new THREE.Quaternion();
@@ -161,6 +161,10 @@ export class RaceScene {
       if (v && v !== this.localPlayer) {
         if (typeof msg.lap === 'number' && msg.lap > v.lap) {
           v.lap = msg.lap;
+          v.lapStartTime = this.raceTime;
+        }
+        if (typeof msg.bestLapTime === 'number' && msg.bestLapTime > 0 && (!isFinite(v.bestLapTime) || msg.bestLapTime < v.bestLapTime)) {
+          v.bestLapTime = msg.bestLapTime;
         }
         if (msg.finished && !v.finished) {
           v.finished = true;
@@ -681,7 +685,7 @@ export class RaceScene {
     const {
       px, py, pz, qx, qy, qz, qw,
       forwardSpeed, steerAngle, boostEnergy,
-      flags, slowdownTimer, lap, progOrFinish, lateralSpeed, yawRate,
+      flags, slowdownTimer, lap, progOrFinish, lateralSpeed, yawRate, bestLapTime,
     } = st;
 
     v.isNetDriven = true;
@@ -723,7 +727,13 @@ export class RaceScene {
     v.steerAngle = steerAngle;
     v.boostEnergy = boostEnergy;
     v.slowdownTimer = slowdownTimer;
+    if (lap > v.lap) {
+      v.lapStartTime = this.raceTime;
+    }
     v.lap = lap;
+    if (bestLapTime > 0 && isFinite(bestLapTime)) {
+      v.bestLapTime = bestLapTime;
+    }
     v.isBoosting = Boolean(flags & 1);
     v.isDrifting = Boolean(flags & 2);
     v.isWrongWay = Boolean(flags & 8);
@@ -736,15 +746,17 @@ export class RaceScene {
         v.finishCrossingPos.set(px, py, pz);
       }
       v.finishTime = progOrFinish;
+      v.currentLapTime = 0;
     } else {
       v.finished = false;
       v.raceProgress = progOrFinish;
+      v.currentLapTime = Math.max(0, this.raceTime - (v.lapStartTime || 0));
     }
 
     const notifCode = (flags >> 5) & 3;
     if (notifCode > 0 && v.hudNotificationTimer <= 0.05) {
-      const rankBonus = Math.max(1, Math.round(v.rank || 1)) * (CONFIG.boost.rankBonusStep || 8);
-      const superBonus = Math.max(CONFIG.boost.rareBonus || 40, rankBonus + 16);
+      const rankBonus = computeRankBoostBonus(v.rank, false);
+      const superBonus = computeRankBoostBonus(v.rank, true);
       const type = notifCode === 2 ? 'super' : notifCode === 3 ? 'slowdown' : 'boost';
       const text = notifCode === 2
         ? `SUPER BOOST +${superBonus}%`
@@ -817,6 +829,7 @@ export class RaceScene {
       const progOrFinish = view[base + 15];
       const latSpd = VEHICLE_FLOATS >= 18 ? (view[base + 16] || 0) : 0;
       const yawRate = VEHICLE_FLOATS >= 18 ? (view[base + 17] || 0) : 0;
+      const bestLapTime = VEHICLE_FLOATS >= 19 ? (view[base + 18] || 0) : 0;
 
       v.rank = rank;
 
@@ -828,7 +841,13 @@ export class RaceScene {
       v.isNetDriven = true;
       v.boostEnergy = boostEnergy;
       v.slowdownTimer = slowdownTimer;
+      if (lap > v.lap) {
+        v.lapStartTime = this.raceTime;
+      }
       v.lap = lap;
+      if (bestLapTime > 0 && isFinite(bestLapTime)) {
+        v.bestLapTime = bestLapTime;
+      }
 
       const isFinished = Boolean(flags & 4);
       if (isFinished) {
@@ -837,15 +856,17 @@ export class RaceScene {
           v.finishCrossingPos.set(px, py, pz);
         }
         v.finishTime = progOrFinish;
+        v.currentLapTime = 0;
       } else {
         v.finished = false;
         v.raceProgress = progOrFinish;
+        v.currentLapTime = Math.max(0, this.raceTime - (v.lapStartTime || 0));
       }
 
       const notifCode = (flags >> 5) & 3;
       if (notifCode > 0 && v.hudNotificationTimer <= 0.05) {
-        const rankBonus = Math.max(1, Math.round(v.rank || 1)) * (CONFIG.boost.rankBonusStep || 8);
-        const superBonus = Math.max(CONFIG.boost.rareBonus || 40, rankBonus + 16);
+        const rankBonus = computeRankBoostBonus(v.rank, false);
+        const superBonus = computeRankBoostBonus(v.rank, true);
         const type = notifCode === 2 ? 'super' : notifCode === 3 ? 'slowdown' : 'boost';
         const text = notifCode === 2
           ? `SUPER BOOST +${superBonus}%`
@@ -1385,15 +1406,22 @@ export class RaceScene {
     // 6) Classement temps réel, étiquettes de pseudos 3D -> 2D et détection de fin de course
     if (this.isOnline && this.localPlayer && this.network) {
       const me = this.localPlayer;
-      if (me.lap > (me._lastSyncedLap || 1) || (me.finished && !me._lastSyncedFinished)) {
+      const bestLapNow = isFinite(me.bestLapTime) ? me.bestLapTime : 0;
+      if (
+        me.lap > (me._lastSyncedLap || 1)
+        || (me.finished && !me._lastSyncedFinished)
+        || (bestLapNow > 0 && Math.abs(bestLapNow - (me._lastSyncedBestLap || 0)) > 0.001)
+      ) {
         me._lastSyncedLap = me.lap;
         me._lastSyncedFinished = Boolean(me.finished);
+        me._lastSyncedBestLap = bestLapNow;
         this.network.sendRaceEvent({
           event: 'LAP_OR_FINISH',
           slotIndex: this.myOnlineSlot,
           lap: me.lap,
           finished: Boolean(me.finished),
           finishTime: me.finishTime || 0,
+          bestLapTime: bestLapNow,
         });
       }
     }

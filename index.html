@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>APEX DUO GP — Course 3D Solo, Écran Scindé & Multijoueur P2P</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1522'/%3E%3Ctext x='32' y='44' font-size='36' text-anchor='middle'%3E%F0%9F%8F%8E%EF%B8%8F%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="css/style.css?v=40" />
+  <link rel="stylesheet" href="css/style.css?v=41" />
   <!-- PeerJS (WebRTC DataChannel P2P à très faible latence) -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script type="importmap">
@@ -711,17 +711,19 @@
         </button>
       </div>
 
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th>Pos</th>
-            <th>Pilote</th>
-            <th>Temps Total</th>
-            <th>Meilleur Tour</th>
-          </tr>
-        </thead>
-        <tbody id="results-tbody"></tbody>
-      </table>
+      <div id="results-table-scroll" class="results-table-scroll">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Pilote</th>
+              <th>Temps Total</th>
+              <th>Meilleur Tour</th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
 
       <div class="modal-actions row">
         <button type="button" id="btn-restart-race" class="cta-btn">REJOUER</button>
@@ -761,6 +763,6 @@
   <!-- Musique d'ambiance du Salon / Garage (fichiers MP3 externe avec fade-in / fade-out) -->
   <audio id="lobby-music" src="./salon.mp3" loop preload="auto"></audio>
 
-  <script type="module" src="js/main.js?v=40"></script>
+  <script type="module" src="js/main.js?v=41"></script>
 </body>
 </html>

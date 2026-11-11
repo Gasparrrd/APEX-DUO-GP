@@ -19,9 +19,9 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CONFIG } from '../config.js?v=40';
-import { clamp } from '../core/utils.js?v=40';
-import { soundManager } from '../core/audio.js?v=40';
+import { CONFIG, computeRankBoostBonus } from '../config.js?v=41';
+import { clamp } from '../core/utils.js?v=41';
+import { soundManager } from '../core/audio.js?v=41';
 
 const B = CONFIG.boost;
 
@@ -308,15 +308,11 @@ export class BoostTokenSystem {
 
   /**
    * Calcule le gain de boost proportionnel à la place dans la course :
-   *  - Jeton bleu standard : 8 * place (ex. 4ème -> 4 * 8 = +32%)
-   *  - Jeton doré rare : au minimum rareBonus (40%), sinon 8 * place + 16
+   *  - Jeton bleu standard : 5 * place (ex. 4ème -> 4 * 5 = +20%)
+   *  - Jeton doré (gold)   : 10 * place (ex. 4ème -> 4 * 10 = +40%)
    */
   _computeTokenBoostBonus(vehicle, isRare) {
-    const rank = Math.max(1, Math.round(vehicle?.rank || 1));
-    const step = B.rankBonusStep || 8;
-    const rankBonus = rank * step;
-    if (!isRare) return rankBonus;
-    return Math.max(B.rareBonus || 40, rankBonus + 16);
+    return computeRankBoostBonus(vehicle?.rank || 1, Boolean(isRare));
   }
 
   /**

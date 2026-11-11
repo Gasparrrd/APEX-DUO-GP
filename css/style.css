@@ -1016,7 +1016,11 @@ kbd {
 }
 
 .results-card {
-  max-width: 620px;
+  width: min(94vw, 760px);
+  max-width: 760px;
+  height: 80vh;
+  max-height: 80vh;
+  overflow: hidden;
 }
 
 .modal-card h2 {
@@ -1043,21 +1047,54 @@ kbd {
   justify-content: center;
 }
 
+.results-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 12, 22, 0.45);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.45) rgba(255, 255, 255, 0.06);
+}
+
+.results-table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.results-table-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.results-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.42);
+  border-radius: 6px;
+}
+
 .results-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 8px 0;
+  margin: 0;
   font-size: 13.5px;
 }
 
 .results-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(13, 21, 36, 0.96);
+  backdrop-filter: blur(6px);
   text-align: left;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .results-table td {
@@ -1120,6 +1157,25 @@ kbd {
 
 .col-time, .col-best {
   font-family: var(--font-mono);
+}
+
+.col-best.best-lap-record {
+  color: #e0b0ff;
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(192, 132, 252, 0.45);
+}
+
+.best-lap-badge {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(192, 132, 252, 0.22);
+  border: 1px solid rgba(192, 132, 252, 0.55);
+  color: #f3e8ff;
+  vertical-align: middle;
 }
 
 /* ==========================================================================
@@ -1272,6 +1328,13 @@ kbd {
   font-family: var(--font-mono);
   color: var(--accent);
   font-weight: 800;
+}
+
+.player-score-card .score-best {
+  font-family: var(--font-mono);
+  color: #e0b0ff;
+  font-weight: 700;
+  font-size: 12px;
 }
 
 .results-spectator-wrap {

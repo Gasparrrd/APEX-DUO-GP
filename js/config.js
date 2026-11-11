@@ -103,8 +103,9 @@ export const CONFIG = {
     topSpeedBonus: 12.0,             // Bonus de vitesse de pointe pendant le boost (m/s)
     tokenCount: 8,                   // Nombre de jetons de boost (7 bleus + 1 doré)
     normalBonus: 25,                 // Valeur de repli d'un jeton normal (%)
-    rankBonusStep: 8,                // Multiplicateur de boost selon le classement (8 × place)
-    rareBonus: 40,                   // Boost minimal donné par un jeton rare (%)
+    rankBonusStep: 5,                // Multiplicateur jeton bleu selon le classement (5 × place)
+    rareRankBonusStep: 10,           // Multiplicateur jeton doré selon le classement (10 × place)
+    rareBonus: 10,                   // Boost minimal d'un jeton doré (%)
     slowdownTokenCount: 9,           // Nombre de jetons ralentisseurs rouges
     slowdownFactor: 0.75,            // Multiplicateur de vitesse du malus
     slowdownDuration: 3.0,           // Durée du malus (s)
@@ -145,7 +146,7 @@ export const CONFIG = {
     normal: {
       label: 'Moyen',                // Nom affiché
       skill: 1.00,                   // Niveau de compétence global
-      maxSpeedFactor: 1.00,          // Part de la vitesse max utilisée
+      maxSpeedFactor: 0.98,          // Part de la vitesse max utilisée
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 0.95,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.94,       // Vitesse conservée en virage
@@ -161,11 +162,11 @@ export const CONFIG = {
     },
     hard: {
       label: 'Difficile',            // Nom affiché
-      skill: 1.14,                   // Niveau de compétence global
+      skill: 1.08,                   // Niveau de compétence global
       maxSpeedFactor: 1.16,          // Part de la vitesse max utilisée
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
-      brakeLookaheadMult: 0.72,      // Distance d'anticipation du freinage (plus bas = freine tard)
-      cornerSpeedFactor: 1.02,       // Vitesse conservée en virage
+      brakeLookaheadMult: 0.84,      // Distance d'anticipation du freinage (plus bas = freine tard)
+      cornerSpeedFactor: 1.01,       // Vitesse conservée en virage
       steerGain: 2.35,               // Précision du volant
       steerRateMult: 1.22,           // Rapidité du volant
       apexCut: 0.70,                 // Tendance à couper à la corde
@@ -475,3 +476,16 @@ export const DEFAULT_PLAYER_CARS = [
   { name: 'Joueur 3', bodyType: 'formula',  color: '#00c853', rims: 'multi', rimFinish: 'gold',   spoiler: 'gt'  },
   { name: 'Joueur 4', bodyType: 'supercar', color: '#8e24aa', rims: 'disc',  rimFinish: 'silver', spoiler: 'gt'  },
 ];
+
+/**
+ * Calcule le gain de boost proportionnel au classement :
+ *  - Jeton bleu standard : 5 * place (ex. 4ème -> +20%)
+ *  - Jeton doré (gold)   : 10 * place (ex. 4ème -> +40%)
+ */
+export function computeRankBoostBonus(rank, isRare = false) {
+  const safeRank = Math.max(1, Math.round(rank || 1));
+  const step = isRare
+    ? (CONFIG.boost.rareRankBonusStep ?? 10)
+    : (CONFIG.boost.rankBonusStep ?? 5);
+  return safeRank * step;
+}

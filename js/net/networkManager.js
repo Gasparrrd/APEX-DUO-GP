@@ -12,13 +12,13 @@
  *        positions (X, Y, Z), rotations (quaternion), vitesses, braquage et boost sans effet accordéon.
  */
 
-import { MAX_TOTAL_CARS } from '../config.js?v=40';
+import { MAX_TOTAL_CARS } from '../config.js?v=41';
 
 const PACKET_SNAPSHOT = 101;
 const PACKET_GUEST_INPUT = 102;
 const PACKET_GUEST_STATE = 103;
 const HEADER_FLOATS = 7;
-const VEHICLE_FLOATS = 18;
+const VEHICLE_FLOATS = 19;
 const NET_TICK_RATE = 60;
 const NET_TICK_INTERVAL = 1 / NET_TICK_RATE;
 const MAX_ONLINE_PLAYERS = 4;
@@ -157,7 +157,7 @@ export class NetworkManager {
       this._snapshotBuffersByCount[c] = new Float32Array(HEADER_FLOATS + c * VEHICLE_FLOATS);
     }
     this._inputFloats = new Float32Array(8);
-    this._guestStateFloats = new Float32Array(20);
+    this._guestStateFloats = new Float32Array(21);
     this._rxGuestInputObj = { slotIndex: 1, throttle: 0, brake: 0, steer: 0, boost: false, reset: false };
     this._rxGuestStateObj = {
       slotIndex: 1,
@@ -165,7 +165,7 @@ export class NetworkManager {
       qx: 0, qy: 0, qz: 0, qw: 1,
       forwardSpeed: 0, steerAngle: 0, boostEnergy: 100,
       flags: 0, slowdownTimer: 0, lap: 1, progOrFinish: 0,
-      pickedTokenIdx: -1, lateralSpeed: 0, yawRate: 0,
+      pickedTokenIdx: -1, lateralSpeed: 0, yawRate: 0, bestLapTime: 0,
     };
   }
 
@@ -1368,6 +1368,7 @@ export class NetworkManager {
       st.pickedTokenIdx = Math.round(view[16]);
       st.lateralSpeed = view[17];
       st.yawRate = view.length >= 20 ? view[19] : 0;
+      st.bestLapTime = view.length >= 21 ? view[20] : 0;
       this.onGuestState(st);
     } else if (magic === PACKET_GUEST_INPUT && this.role === 'host') {
       const slotIdx = hostEntry
@@ -1623,6 +1624,7 @@ export class NetworkManager {
       buf[base + 15] = v.finished ? (v.finishTime || 0) : (v.raceProgress || 0);
       buf[base + 16] = v.lateralSpeed || 0;
       buf[base + 17] = v.yawRate !== undefined ? v.yawRate : (v.chassisBody?.angularVelocity?.y || 0);
+      buf[base + 18] = isFinite(v.bestLapTime) ? v.bestLapTime : 0;
     }
 
     this._sendFastBinary(buf);
@@ -1673,6 +1675,7 @@ export class NetworkManager {
     buf[17] = vehicle.lateralSpeed || 0;
     buf[18] = this.mySlotIndex;
     buf[19] = vehicle.yawRate !== undefined ? vehicle.yawRate : (vehicle.chassisBody?.angularVelocity?.y || 0);
+    buf[20] = isFinite(vehicle.bestLapTime) ? vehicle.bestLapTime : 0;
     this._sendFastBinary(buf);
   }
 
