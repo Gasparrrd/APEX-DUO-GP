@@ -478,19 +478,11 @@ export class GarageScene {
   }
 
   /**
-   * Projette les positions 3D au-dessus des podiums en mode Salon Multijoueur.
-   * Affiche uniquement les badges des joueurs réellement présents dans le salon.
+   * Projette les positions 3D au-dessus des podiums (en mode hors-ligne et Multijoueur en Ligne).
+   * Affiche uniquement les badges des voitures visibles dans le salon.
    */
   _updateFloating3DTags() {
     const tagIds = ['garage-tag-host', 'garage-tag-guest', 'garage-tag-slot-2', 'garage-tag-slot-3'];
-
-    if (!this.isOnlineLobby) {
-      for (let i = 0; i < tagIds.length; i++) {
-        const el = document.getElementById(tagIds[i]);
-        if (el) el.classList.add('hidden');
-      }
-      return;
-    }
 
     const w = window.innerWidth;
     const h = window.innerHeight;

@@ -15,6 +15,7 @@ import { RaceScene } from './scenes/raceScene.js?v=42';
 import { HUDController } from './ui/hud.js?v=42';
 import { soundManager } from './core/audio.js?v=42';
 import { NetworkManager } from './net/networkManager.js?v=42';
+import { recordsManager, CIRCUIT_META, CIRCUIT_ORDER, LAP_MODES, RecordsManager } from './net/recordsManager.js?v=42';
 
 const DIFF_BY_STEP = { 1: 'easy', 2: 'normal', 3: 'hard' };
 const DIFF_LABEL_BY_KEY = { easy: 'Facile', normal: 'Moyen', hard: 'Difficile' };
@@ -63,8 +64,17 @@ class RacingApp {
     pmrem.dispose();
     setSharedCarEnvMap(this.envMap);
 
+    let savedPseudo = '';
+    try {
+      savedPseudo = String(localStorage.getItem('apex_duo_player_pseudo') || '').trim().slice(0, 16);
+    } catch (_) {}
+    this.playerPseudo = savedPseudo.length >= 2 ? savedPseudo : 'Pilote';
+    this.pseudoValidatedThisSession = false;
+    this._pendingAutoJoinAfterPseudo = null;
+    this._lastWorldRecordsResultInfo = null;
+
     this.playerConfigs = [
-      { ...DEFAULT_PLAYER_CARS[0], name: 'HÔTE' },
+      { ...DEFAULT_PLAYER_CARS[0], name: this.playerPseudo },
       { ...DEFAULT_PLAYER_CARS[1], name: 'JOUEUR 2' },
       { ...(DEFAULT_PLAYER_CARS[2] || DEFAULT_PLAYER_CARS[0]), name: 'JOUEUR 3' },
       { ...(DEFAULT_PLAYER_CARS[3] || DEFAULT_PLAYER_CARS[1]), name: 'JOUEUR 4' },
@@ -112,6 +122,7 @@ class RacingApp {
       onGuestInput: (inp) => this.raceScene.setRemoteGuestControls(inp),
       onGuestState: (st) => this.raceScene.applyGuestState(st),
       onRaceEvent: (ev) => this.raceScene.applyRaceEvent(ev),
+      onRecordsSync: (payload) => this._onNetRecordsSync(payload),
     });
     this.raceScene.setNetworkManager(this.network);
 
@@ -123,10 +134,15 @@ class RacingApp {
     this._toastTimer = null;
 
     this._bindUI();
+    this._setupPseudoSystem();
+    this._setupRecordsTab();
     this._syncCustomizerUI();
     this._refreshGameModeUI();
     this._refreshWeatherUI();
+    this._update3DPodiumBadges();
     this._updateWaitingRoomSlotsUI();
+    this.refreshWorldRecords();
+    this._prefetchActiveGhost();
 
     window.addEventListener('resize', () => this._onResize());
 
@@ -160,7 +176,7 @@ class RacingApp {
       });
     }
 
-    // Onglets du panneau droit (Paramètres vs Contrôles AZERTY)
+    // Onglets du panneau droit (Paramètres vs Records vs Contrôles)
     document.querySelectorAll('[data-lobby-tab]').forEach((btn) => {
       btn.addEventListener('click', (event) => {
         event.preventDefault();
@@ -168,8 +184,13 @@ class RacingApp {
         document.querySelectorAll('[data-lobby-tab]').forEach((b) => {
           b.classList.toggle('active', b.dataset.lobbyTab === tab);
         });
-        document.getElementById('lobby-panel-settings').classList.toggle('hidden', tab !== 'settings');
-        document.getElementById('lobby-panel-controls').classList.toggle('hidden', tab !== 'controls');
+        document.getElementById('lobby-panel-settings')?.classList.toggle('hidden', tab !== 'settings');
+        document.getElementById('lobby-panel-records')?.classList.toggle('hidden', tab !== 'records');
+        document.getElementById('lobby-panel-controls')?.classList.toggle('hidden', tab !== 'controls');
+        if (tab === 'records') {
+          this._renderLobbyRecords();
+          this.refreshWorldRecords();
+        }
       });
     });
 
@@ -333,7 +354,8 @@ class RacingApp {
         if (guestPanel) guestPanel.classList.add('hidden');
         if (this.network && this.network.role !== 'host') {
           const hostNameInput = document.getElementById('online-host-name');
-          const hostName = (hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim() : 'HÔTE';
+          const rawHost = (hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim() : (this.playerPseudo || 'Pilote');
+          const hostName = rawHost.slice(0, 16);
           this.playerConfigs[0].name = hostName;
           this.activeGaragePlayer = 0;
           this.garageScene.setActivePlayer(0);
@@ -378,11 +400,18 @@ class RacingApp {
     const hostNameInput = document.getElementById('online-host-name');
     if (hostNameInput) {
       hostNameInput.addEventListener('input', (e) => {
-        const name = e.target.value.trim().slice(0, 18) || 'HÔTE';
+        const name = e.target.value.trim().slice(0, 16) || this.playerPseudo || 'Pilote';
+        if (name.length >= 2) {
+          this.playerPseudo = name;
+          const pEl = document.getElementById('garage-current-pseudo');
+          if (pEl) pEl.textContent = name;
+          try { localStorage.setItem('apex_duo_player_pseudo', name); } catch (_) {}
+        }
         this.playerConfigs[0].name = name;
         this.garageScene.updateCarConfig(0, { name });
         this.network.setHostName(name, this.playerConfigs[0]);
         this._update3DPodiumBadges();
+        this._syncCustomizerUI();
         this._updateWaitingRoomSlotsUI();
         this._refreshOnlineStatusUI();
       });
@@ -439,12 +468,19 @@ class RacingApp {
     if (guestNameInput) {
       guestNameInput.addEventListener('input', (e) => {
         if (this._isGuestCustomizerLocked()) return;
-        const name = e.target.value.trim().slice(0, 18) || 'PILOTE';
+        const name = e.target.value.trim().slice(0, 16) || this.playerPseudo || 'Pilote';
+        if (name.length >= 2) {
+          this.playerPseudo = name;
+          const pEl = document.getElementById('garage-current-pseudo');
+          if (pEl) pEl.textContent = name;
+          try { localStorage.setItem('apex_duo_player_pseudo', name); } catch (_) {}
+        }
         const myIdx = this.network.mySlotIndex || 1;
         this.playerConfigs[myIdx].name = name;
         this.garageScene.updateCarConfig(myIdx, { name });
         this.network.setGuestName(name, this.playerConfigs[myIdx]);
         this._update3DPodiumBadges();
+        this._syncCustomizerUI();
         this._updateWaitingRoomSlotsUI();
         this._refreshOnlineStatusUI();
       });
@@ -534,6 +570,7 @@ class RacingApp {
     document.getElementById('setting-laps').addEventListener('change', (e) => {
       if (this.currentGameMode === 'ONLINE' && this.network.role === 'guest') return;
       this.raceSettings.laps = Number(e.target.value);
+      this._prefetchActiveGhost();
       this._broadcastRaceSettingsIfHost();
     });
     document.getElementById('setting-bots').addEventListener('change', (e) => {
@@ -729,7 +766,10 @@ class RacingApp {
         }
         this._prepareHostUIBeforeOpen();
         const hostNameInput = document.getElementById('online-host-name');
-        const hostName = (hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim() : 'HÔTE';
+        const hostName = (this.playerPseudo && this.playerPseudo.length >= 2)
+          ? this.playerPseudo
+          : ((hostNameInput && hostNameInput.value.trim()) ? hostNameInput.value.trim().slice(0, 16) : 'Pilote');
+        if (hostNameInput) hostNameInput.value = hostName;
         this.playerConfigs[0].name = hostName;
         this.network.initHost(hostName, this.playerConfigs[0], this.raceSettings);
       }
@@ -748,7 +788,9 @@ class RacingApp {
       if (count <= 1 && this.activeGaragePlayer !== 0) {
         this.activeGaragePlayer = 0;
       }
+      this.playerConfigs[0].name = this.playerPseudo || 'Pilote';
       this._syncGarageCarsAndCamera();
+      this._update3DPodiumBadges();
     }
 
     this._updateBotSelectorOptions();
@@ -778,7 +820,7 @@ class RacingApp {
     }
 
     this.activeGaragePlayer = 0;
-    this.playerConfigs[0].name = 'JOUEUR 1';
+    this.playerConfigs[0].name = this.playerPseudo || 'Pilote';
     this.playerConfigs[1].name = 'JOUEUR 2';
     this.playerConfigs[2].name = 'JOUEUR 3';
     this.playerConfigs[3].name = 'JOUEUR 4';
@@ -876,6 +918,8 @@ class RacingApp {
     document.querySelectorAll('#circuit-selector button[data-circuit-id]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.circuitId === this.raceSettings.circuit);
     });
+
+    this._prefetchActiveGhost();
 
     if (!options.fromNetwork) {
       this._broadcastRaceSettingsIfHost();
@@ -1396,20 +1440,49 @@ class RacingApp {
   }
 
   _update3DPodiumBadges() {
+    const isOnlineMode = this.currentGameMode === 'ONLINE';
     const slots = this.network?.slots || [];
 
     const badgeIds = [
-      { pseudo: 'tag-host-pseudo', status: 'tag-host-status', defaultName: 'HÔTE' },
-      { pseudo: 'tag-guest-pseudo', status: 'tag-guest-status', defaultName: 'EN ATTENTE D’UN JOUEUR…' },
-      { pseudo: 'tag-slot2-pseudo', status: 'tag-slot2-status', defaultName: 'SLOT 3 LIBRE' },
-      { pseudo: 'tag-slot3-pseudo', status: 'tag-slot3-status', defaultName: 'SLOT 4 LIBRE' },
+      { role: 'tag-role-0', pseudo: 'tag-host-pseudo', status: 'tag-host-status', defaultName: 'HÔTE' },
+      { role: 'tag-role-1', pseudo: 'tag-guest-pseudo', status: 'tag-guest-status', defaultName: 'EN ATTENTE D’UN JOUEUR…' },
+      { role: 'tag-role-2', pseudo: 'tag-slot2-pseudo', status: 'tag-slot2-status', defaultName: 'SLOT 3 LIBRE' },
+      { role: 'tag-role-3', pseudo: 'tag-slot3-pseudo', status: 'tag-slot3-status', defaultName: 'SLOT 4 LIBRE' },
     ];
 
+    if (!isOnlineMode) {
+      const p1RoleEl = document.getElementById(badgeIds[0].role);
+      const p1PseudoEl = document.getElementById(badgeIds[0].pseudo);
+      const p1StatusEl = document.getElementById(badgeIds[0].status);
+      if (p1RoleEl) p1RoleEl.textContent = this.raceSettings.playerCount === 1 ? 'PILOTE SOLO' : 'PILOTE 1';
+      if (p1PseudoEl) p1PseudoEl.textContent = this.playerPseudo || this.playerConfigs[0]?.name || 'Pilote';
+      if (p1StatusEl) {
+        p1StatusEl.textContent = 'PRÊT';
+        p1StatusEl.className = 'tag-3d-status status-ready';
+      }
+
+      const p2RoleEl = document.getElementById(badgeIds[1].role);
+      const p2PseudoEl = document.getElementById(badgeIds[1].pseudo);
+      const p2StatusEl = document.getElementById(badgeIds[1].status);
+      if (p2RoleEl) p2RoleEl.textContent = 'PILOTE 2 · OKLM';
+      if (p2PseudoEl) p2PseudoEl.textContent = this.playerConfigs[1]?.name || 'JOUEUR 2';
+      if (p2StatusEl) {
+        p2StatusEl.textContent = 'PRÊT';
+        p2StatusEl.className = 'tag-3d-status status-ready';
+      }
+      return;
+    }
+
     for (let i = 0; i < 4; i++) {
+      const roleEl = document.getElementById(badgeIds[i].role);
       const pseudoEl = document.getElementById(badgeIds[i].pseudo);
       const statusEl = document.getElementById(badgeIds[i].status);
       const s = slots[i];
       const occupied = Boolean(s && s.occupied);
+
+      if (roleEl) {
+        roleEl.textContent = i === 0 ? 'SLOT 1 · HÔTE' : `SLOT ${i + 1} · INVITÉ`;
+      }
 
       if (i === 0) {
         const hostName = s?.name || this.playerConfigs[0]?.name || this.network?.hostName || 'HÔTE';
@@ -1598,7 +1671,7 @@ class RacingApp {
       if (subP1) subP1.textContent = 'Votre voiture · Plein Écran (ZQSD)';
       if (subP2) subP2.textContent = 'Voir la salle d’attente à droite';
     } else {
-      if (titleP1) titleP1.textContent = 'JOUEUR 1';
+      if (titleP1) titleP1.textContent = this.playerPseudo || this.playerConfigs[0]?.name || 'JOUEUR 1';
       if (titleP2) titleP2.textContent = 'JOUEUR 2';
       if (subP1) {
         subP1.textContent = modeCount === 0
@@ -1721,6 +1794,7 @@ class RacingApp {
     soundManager.ensureStarted();
     soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
+    this._raceRecordsSubmitted = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);
 
@@ -1758,6 +1832,8 @@ class RacingApp {
       resolvedCircuit = circuits[Math.floor(Math.random() * circuits.length)];
     }
 
+    const cachedGhost = recordsManager.getCachedGhost(resolvedCircuit, Number(this.raceSettings.laps) || 3);
+
     const onlineSettings = {
       ...this.raceSettings,
       circuit: resolvedCircuit,
@@ -1767,9 +1843,11 @@ class RacingApp {
       myOnlineSlot: 0,
       isOnline: true,
       onlineRole: 'host',
+      ghostData: cachedGhost,
     };
 
     this.raceScene.startRace(this.playerConfigs, onlineSettings);
+    this._refreshGhostAsyncDuringCountdown(resolvedCircuit, Number(this.raceSettings.laps) || 3);
 
     const tokenLayout = this.raceScene.boostTokens
       ? this.raceScene.boostTokens.exportTokenLayout()
@@ -1811,6 +1889,7 @@ class RacingApp {
     soundManager.ensureStarted();
     soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
+    this._raceRecordsSubmitted = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);
 
@@ -1827,6 +1906,10 @@ class RacingApp {
       ? payload.humanSlots
       : (Array.isArray(payload.raceSettings?.humanSlots) ? payload.raceSettings.humanSlots : [0, 1]);
 
+    const resolvedCircuit = payload.raceSettings?.circuit || this.raceSettings.circuit || 'flat';
+    const resolvedLaps = Number(payload.raceSettings?.laps || this.raceSettings.laps) || 3;
+    const cachedGhost = recordsManager.getCachedGhost(resolvedCircuit, resolvedLaps);
+
     const guestOnlineSettings = {
       ...this.raceSettings,
       ...(payload.raceSettings || {}),
@@ -1835,9 +1918,11 @@ class RacingApp {
       myOnlineSlot: this.network.mySlotIndex || 1,
       isOnline: true,
       onlineRole: 'guest',
+      ghostData: cachedGhost,
     };
 
     this.raceScene.startRace(this.playerConfigs, guestOnlineSettings);
+    this._refreshGhostAsyncDuringCountdown(resolvedCircuit, resolvedLaps);
   }
 
   resetRace(rebuildFromLobby = true) {
@@ -1845,6 +1930,7 @@ class RacingApp {
     soundManager.ensureStarted();
     soundManager.fadeOutLobbyMusic(300);
     this.isPaused = false;
+    this._raceRecordsSubmitted = false;
     this.gameState = 'RACING';
     this.garageScene.setEnabled(false);
 
@@ -1863,14 +1949,23 @@ class RacingApp {
         const circuits = ['flat', 'mountain', 'valley', 'lake', 'grotto'];
         actualCircuit = circuits[Math.floor(Math.random() * circuits.length)];
       }
+      const laps = Number(this.raceSettings.laps) || 3;
+      const cachedGhost = recordsManager.getCachedGhost(actualCircuit, laps);
 
       this.raceScene.startRace(this.playerConfigs, {
         ...this.raceSettings,
         circuit: actualCircuit,
         isOnline: false,
+        ghostData: cachedGhost,
       });
+      this._refreshGhostAsyncDuringCountdown(actualCircuit, laps);
     } else {
+      const cId = this.raceScene.currentCircuitId || 'flat';
+      const laps = Number(this.raceSettings.laps) || 3;
+      const cachedGhost = recordsManager.getCachedGhost(cId, laps);
+      this.raceScene.setGhostData(cachedGhost);
       this.raceScene.resetRace();
+      this._refreshGhostAsyncDuringCountdown(cId, laps);
     }
   }
 
@@ -1903,6 +1998,294 @@ class RacingApp {
     this._refreshWeatherUI();
     this._syncCustomizerUI();
     this._refreshOnlineStatusUI();
+    this.refreshWorldRecords();
+  }
+
+  // ==========================================================================
+  // 5. SYSTÈME DE PSEUDO OBLIGATOIRE, RECORDS MONDIAUX & FANTÔME (#1)
+  // ==========================================================================
+
+  _setupPseudoSystem() {
+    const form = document.getElementById('pseudo-welcome-form');
+    const input = document.getElementById('pseudo-welcome-input');
+    const errEl = document.getElementById('pseudo-welcome-error');
+    const btnEdit = document.getElementById('btn-change-pseudo');
+    const btnCancel = document.getElementById('btn-cancel-welcome-pseudo');
+
+    const currentPseudoEl = document.getElementById('garage-current-pseudo');
+    if (currentPseudoEl) {
+      currentPseudoEl.textContent = this.playerPseudo;
+    }
+
+    if (form && input) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const raw = String(input.value || '').trim().replace(/\s+/g, ' ');
+        if (raw.length < 2 || raw.length > 16) {
+          if (errEl) {
+            errEl.textContent = 'Veuillez saisir un pseudo valide (entre 2 et 16 caractères).';
+            errEl.classList.remove('hidden');
+          }
+          input.focus();
+          return;
+        }
+        if (errEl) errEl.classList.add('hidden');
+
+        this.setPlayerPseudo(raw);
+
+        const modal = document.getElementById('pseudo-welcome-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+        }
+
+        if (this._pendingAutoJoinAfterPseudo) {
+          const roomCode = this._pendingAutoJoinAfterPseudo;
+          this._pendingAutoJoinAfterPseudo = null;
+          this._joinOnlineRoomAsGuest(roomCode, this.playerPseudo);
+        }
+      });
+
+      input.addEventListener('input', () => {
+        if (errEl && !errEl.classList.contains('hidden')) {
+          errEl.classList.add('hidden');
+        }
+      });
+    }
+
+    if (btnEdit) {
+      btnEdit.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openPseudoModal(false);
+      });
+    }
+
+    if (btnCancel) {
+      btnCancel.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!this.pseudoValidatedThisSession) return;
+        const modal = document.getElementById('pseudo-welcome-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+        }
+      });
+    }
+  }
+
+  openPseudoModal(isInitialSession = false) {
+    const modal = document.getElementById('pseudo-welcome-modal');
+    const input = document.getElementById('pseudo-welcome-input');
+    const errEl = document.getElementById('pseudo-welcome-error');
+    const titleEl = document.getElementById('pseudo-modal-title');
+    const btnCancel = document.getElementById('btn-cancel-welcome-pseudo');
+    if (!modal || !input) return;
+
+    let saved = '';
+    try {
+      saved = String(localStorage.getItem('apex_duo_player_pseudo') || '').trim().slice(0, 16);
+    } catch (_) {}
+
+    input.value = this.pseudoValidatedThisSession ? this.playerPseudo : saved;
+    if (errEl) errEl.classList.add('hidden');
+
+    if (titleEl) {
+      titleEl.textContent = (isInitialSession || !this.pseudoValidatedThisSession)
+        ? 'PILOTE, IDENTIFIEZ-VOUS'
+        : 'MODIFIER VOTRE PSEUDO';
+    }
+    if (btnCancel) {
+      btnCancel.classList.toggle('hidden', Boolean(isInitialSession || !this.pseudoValidatedThisSession));
+    }
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 30);
+  }
+
+  setPlayerPseudo(rawPseudo) {
+    const clean = String(rawPseudo || 'Pilote').trim().replace(/\s+/g, ' ').slice(0, 16) || 'Pilote';
+    this.playerPseudo = clean;
+    this.pseudoValidatedThisSession = true;
+    try {
+      localStorage.setItem('apex_duo_player_pseudo', clean);
+    } catch (_) {}
+
+    const currentPseudoEl = document.getElementById('garage-current-pseudo');
+    if (currentPseudoEl) currentPseudoEl.textContent = clean;
+
+    const hostNameInput = document.getElementById('online-host-name');
+    const joinNameInput = document.getElementById('online-join-name');
+    const guestNameInput = document.getElementById('online-guest-name');
+    const guestModalInput = document.getElementById('guest-modal-name-input');
+    if (hostNameInput && this.network?.role !== 'guest') hostNameInput.value = clean;
+    if (joinNameInput) joinNameInput.value = clean;
+    if (guestNameInput && this.network?.role === 'guest') guestNameInput.value = clean;
+    if (guestModalInput) guestModalInput.value = clean;
+
+    if (this.network && this.network.role === 'guest') {
+      const myIdx = this.network.mySlotIndex || 1;
+      this.playerConfigs[myIdx].name = clean;
+      this.garageScene.updateCarConfig(myIdx, { name: clean });
+      this.network.setGuestName(clean, this.playerConfigs[myIdx]);
+    } else {
+      this.playerConfigs[0].name = clean;
+      this.garageScene.updateCarConfig(0, { name: clean });
+      if (this.network && this.network.role === 'host') {
+        this.network.setHostName(clean, this.playerConfigs[0]);
+      }
+    }
+
+    this._update3DPodiumBadges();
+    this._updateWaitingRoomSlotsUI();
+    this._syncCustomizerUI();
+    this._refreshOnlineStatusUI();
+    this._renderLobbyRecords();
+
+    recordsManager.syncDevicePseudo(clean).then(() => {
+      this._renderLobbyRecords();
+      if (this.gameState === 'RESULTS' && this._lastWorldRecordsResultInfo) {
+        this._lastWorldRecordsResultInfo.myPseudo = clean;
+        this._lastWorldRecordsResultInfo.circuitRecords = recordsManager.getCircuitRecords(this._lastWorldRecordsResultInfo.circuitId);
+        this.hud.renderWorldRecordsResults(this._lastWorldRecordsResultInfo);
+      }
+      if (this.raceScene?.ghostCar && this.raceScene.ghostCar.deviceId === recordsManager.deviceId) {
+        this.raceScene.ghostCar.pseudo = clean;
+        this.raceScene._initRaceNameTagElements();
+      }
+      if (this.network && this.network.active && this.network.connected) {
+        this.network.sendRecordsSync(recordsManager.exportForPeer());
+      }
+    });
+  }
+
+  _setupRecordsTab() {
+    const filterEl = document.getElementById('records-circuit-filter');
+    const refreshBtn = document.getElementById('btn-refresh-records');
+    if (filterEl) {
+      filterEl.addEventListener('change', () => {
+        this._renderLobbyRecords();
+      });
+    }
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.refreshWorldRecords();
+      });
+    }
+    this._renderLobbyRecords();
+  }
+
+  async refreshWorldRecords() {
+    const res = await recordsManager.fetchAllRecords();
+    const statusEl = document.getElementById('records-sync-status');
+    if (statusEl) {
+      if (res.online) {
+        statusEl.textContent = '🌐 En ligne';
+        statusEl.classList.remove('is-local');
+      } else {
+        statusEl.textContent = '💾 Local / P2P';
+        statusEl.classList.add('is-local');
+      }
+    }
+    this._renderLobbyRecords();
+    if (this.network && this.network.active && this.network.connected) {
+      this.network.sendRecordsSync(recordsManager.exportForPeer());
+    }
+  }
+
+  _onNetRecordsSync(payload) {
+    const changed = recordsManager.importFromPeer(payload);
+    if (changed) {
+      this._renderLobbyRecords();
+      if (this.gameState === 'RESULTS' && this._lastWorldRecordsResultInfo) {
+        const cid = this._lastWorldRecordsResultInfo.circuitId;
+        this._lastWorldRecordsResultInfo.circuitRecords = recordsManager.getCircuitRecords(cid);
+        this.hud.renderWorldRecordsResults(this._lastWorldRecordsResultInfo);
+      }
+    }
+  }
+
+  _renderLobbyRecords() {
+    const container = document.getElementById('lobby-records-list');
+    if (!container) return;
+    const filterVal = document.getElementById('records-circuit-filter')?.value || 'all';
+    const circuitsToShow = filterVal === 'all'
+      ? CIRCUIT_ORDER
+      : (CIRCUIT_META[filterVal] ? [filterVal] : CIRCUIT_ORDER);
+
+    const htmlParts = circuitsToShow.map((cid) => {
+      const meta = CIRCUIT_META[cid];
+      const rec = recordsManager.getCircuitRecords(cid);
+      const bestLapHtml = this.hud._renderRecordPodiumHtml(rec.bestLap || [], {
+        myPseudo: this.playerPseudo,
+        myDeviceId: recordsManager.deviceId,
+        showGhostBadge: false,
+      });
+
+      const lapsHtml = LAP_MODES.map((laps) => {
+        const list = (rec.race && rec.race[String(laps)]) || [];
+        const rowsHtml = this.hud._renderRecordPodiumHtml(list, {
+          myPseudo: this.playerPseudo,
+          myDeviceId: recordsManager.deviceId,
+          showGhostBadge: true,
+        });
+        return `
+          <div class="record-lap-subcard">
+            <div class="record-lap-subtitle">${laps} Tours</div>
+            <div class="record-podium-list">${rowsHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="circuit-record-card" data-circuit-records="${cid}">
+          <div class="circuit-record-card-header">
+            <span class="circuit-record-title">${meta.label}</span>
+          </div>
+          <div class="record-section-block">
+            <div class="record-section-title">⚡ Top 3 Mondial — Meilleur tour (1 tour)</div>
+            <div class="record-podium-list">${bestLapHtml}</div>
+          </div>
+          <div class="record-section-block">
+            <div class="record-section-title">🏁 Top 3 Mondial — Course complète</div>
+            <div class="record-laps-grid">${lapsHtml}</div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = htmlParts.join('');
+  }
+
+  _prefetchActiveGhost() {
+    const cId = this.raceSettings.circuit;
+    const laps = Number(this.raceSettings.laps) || 3;
+    if (!cId || cId === 'random') return;
+    recordsManager.fetchGhost(cId, laps);
+  }
+
+  _refreshGhostAsyncDuringCountdown(circuitId, laps) {
+    if (!circuitId || !['2', '3', '5'].includes(String(laps))) return;
+    recordsManager.fetchGhost(circuitId, laps).then((freshGhost) => {
+      if (
+        this.gameState === 'RACING'
+        && this.raceScene.currentCircuitId === circuitId
+        && (this.raceScene.state === 'countdown' || this.raceScene.raceTime < 0.8)
+      ) {
+        const curTime = this.raceScene.ghostCar ? this.raceScene.ghostCar.time : null;
+        const freshTime = freshGhost ? freshGhost.time : null;
+        const curPseudo = this.raceScene.ghostCar ? this.raceScene.ghostCar.pseudo : null;
+        const freshPseudo = freshGhost ? freshGhost.pseudo : null;
+        if (Boolean(freshGhost) !== Boolean(this.raceScene.ghostCar) || curTime !== freshTime || curPseudo !== freshPseudo) {
+          this.raceScene.setGhostData(freshGhost);
+        }
+      }
+    });
   }
 
   _onRaceFinished(standings) {
@@ -1910,8 +2293,106 @@ class RacingApp {
     this.gameState = 'RESULTS';
     this._resultsRefreshTimer = 0;
     soundManager.silenceRaceAudio();
-    this.hud.renderFinalResults(standings, this.raceScene.raceTime);
+
+    const circuitId = this.raceScene.currentCircuitId || 'flat';
+    const laps = Number(this.raceScene.players[0]?.totalLaps || this.raceSettings.laps) || 3;
+    const circuitLabel = CIRCUIT_META[circuitId]?.label || circuitId;
+
+    // Évite une double soumission sur la même course (ex. retour depuis le mode spectateur)
+    if (this._raceRecordsSubmitted && this._lastWorldRecordsResultInfo) {
+      this._lastWorldRecordsResultInfo.circuitRecords = recordsManager.getCircuitRecords(circuitId);
+      this.hud.renderFinalResults(standings, this.raceScene.raceTime, this._lastWorldRecordsResultInfo);
+      document.getElementById('results-overlay').classList.remove('hidden');
+      return;
+    }
+    this._raceRecordsSubmitted = true;
+
+    this._lastWorldRecordsResultInfo = {
+      circuitId,
+      circuitLabel,
+      laps,
+      myPseudo: this.playerPseudo,
+      myDeviceId: recordsManager.deviceId,
+      bestLapRank: null,
+      raceRank: null,
+      isNewBestLapWR: false,
+      isNewRaceWR: false,
+      highlightEntryIds: [],
+      circuitRecords: recordsManager.getCircuitRecords(circuitId),
+    };
+
+    this.hud.renderFinalResults(standings, this.raceScene.raceTime, this._lastWorldRecordsResultInfo);
     document.getElementById('results-overlay').classList.remove('hidden');
+
+    // Enregistrement des records mondiaux (meilleur tour, course complète & fantôme #1)
+    const submitTargets = this.raceScene.isOnline
+      ? (this.raceScene.localPlayer ? [this.raceScene.localPlayer] : [])
+      : (this.raceScene.players || []);
+
+    const promises = submitTargets
+      .filter((p) => p && !p.isAI)
+      .map((p) => {
+        const bestLapTime = (typeof p.bestLapTime === 'number' && Number.isFinite(p.bestLapTime) && p.bestLapTime > 0)
+          ? p.bestLapTime
+          : null;
+        const totalRaceTime = (p.finished && typeof p.finishTime === 'number' && Number.isFinite(p.finishTime) && p.finishTime > 0)
+          ? p.finishTime
+          : null;
+        const ghost = p.finished ? this.raceScene.getPlayerGhostPayload(p.id) : null;
+
+        if (bestLapTime === null && totalRaceTime === null) return null;
+
+        return recordsManager.submitRaceResult({
+          circuit: circuitId,
+          laps,
+          pseudo: p.name || this.playerPseudo,
+          carConfig: p.model?.cfg || this.playerConfigs[0],
+          bestLapTime,
+          totalRaceTime,
+          ghost,
+        });
+      })
+      .filter(Boolean);
+
+    if (promises.length > 0) {
+      Promise.all(promises).then((results) => {
+        let bestLapRank = null;
+        let raceRank = null;
+        let isNewBestLapWR = false;
+        let isNewRaceWR = false;
+        const highlightEntryIds = [];
+
+        for (const r of results) {
+          if (!r) continue;
+          if (r.entryId) highlightEntryIds.push(r.entryId);
+          if (r.isNewBestLapWR) isNewBestLapWR = true;
+          if (r.isNewRaceWR) isNewRaceWR = true;
+          if (r.bestLapRank && (!bestLapRank || r.bestLapRank < bestLapRank)) bestLapRank = r.bestLapRank;
+          if (r.raceRank && (!raceRank || r.raceRank < raceRank)) raceRank = r.raceRank;
+        }
+
+        this._lastWorldRecordsResultInfo = {
+          circuitId,
+          circuitLabel,
+          laps,
+          myPseudo: this.playerPseudo,
+          myDeviceId: recordsManager.deviceId,
+          bestLapRank,
+          raceRank,
+          isNewBestLapWR,
+          isNewRaceWR,
+          highlightEntryIds,
+          circuitRecords: recordsManager.getCircuitRecords(circuitId),
+        };
+
+        this.hud.renderWorldRecordsResults(this._lastWorldRecordsResultInfo);
+        this._renderLobbyRecords();
+
+        if (this.network && this.network.active && this.network.connected) {
+          this.network.sendRecordsSync(recordsManager.exportForPeer());
+        }
+      });
+    }
   }
 
   enterSpectatorFromResults() {
@@ -1991,25 +2472,8 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   app._syncCustomizerUI();
 
-  // Détection automatique : si l'URL contient ?room=CODE, pré-remplit le code et tente la connexion immédiatement
-  if (roomParam) {
-    const cleanCode = NetworkManager.normalizeRoomCode(roomParam);
-    app._pendingRoomId = cleanCode;
-
-    const joinCodeInput = document.getElementById('online-join-code-input');
-    if (joinCodeInput) {
-      joinCodeInput.value = cleanCode;
-    }
-
-    const defaultPseudo = params.get('name')
-      ? params.get('name').trim().slice(0, 18)
-      : `PILOTE-${Math.floor(10 + Math.random() * 89)}`;
-
-    app._joinOnlineRoomAsGuest(cleanCode, defaultPseudo);
-    return;
-  }
-
   if (params.get('mode') === 'race') {
+    app.setPlayerPseudo(app.playerPseudo || 'Pilote');
     app.resetRace(true);
     if (params.get('skipCountdown') === '1') {
       app.raceScene.countdownTimer = 0.02;
@@ -2021,6 +2485,28 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       app.input.codes.clear();
       app.raceScene.render();
+    }
+    return;
+  }
+
+  // Détection automatique : si l'URL contient ?room=CODE, pré-remplit le code et rejoindra après validation du pseudo obligatoire
+  if (roomParam) {
+    const cleanCode = NetworkManager.normalizeRoomCode(roomParam);
+    app._pendingRoomId = cleanCode;
+    app._pendingAutoJoinAfterPseudo = cleanCode;
+
+    const joinCodeInput = document.getElementById('online-join-code-input');
+    if (joinCodeInput) {
+      joinCodeInput.value = cleanCode;
+    }
+  }
+
+  // Écran d'entrée obligatoire : validation du pseudo exigée à chaque nouvelle session
+  app.openPseudoModal(true);
+  if (params.get('name')) {
+    const wInput = document.getElementById('pseudo-welcome-input');
+    if (wInput && !wInput.value.trim()) {
+      wInput.value = params.get('name').trim().slice(0, 16);
     }
   }
 });

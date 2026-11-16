@@ -201,35 +201,55 @@ export class TrackLayout {
     const pts = curve.getSpacedPoints(n);
     pts.length = n;
 
-    // Lisse le profil d'altitude Y pour garantir un ruban continu sans cassure de pente ni tremblements
+    // Lisse le profil d'altitude Y sans clamp initial brutal puis arrondit les jonctions à y = 0 (continuité C1/C2)
     const rawY = new Float32Array(n);
-    for (let i = 0; i < n; i++) rawY[i] = Math.max(0, pts[i].y);
+    for (let i = 0; i < n; i++) rawY[i] = pts[i].y;
     let smoothY = rawY;
     if (this.hasRelief) {
-      const passes = 4;
-      const radius = 8;
-      for (let p = 0; p < passes; p++) {
-        smoothY = smoothLoop(smoothY, radius);
+      for (let p = 0; p < 6; p++) {
+        smoothY = smoothLoop(smoothY, 10);
+      }
+      for (let i = 0; i < n; i++) {
+        smoothY[i] = Math.max(0, smoothY[i]);
+      }
+      for (let p = 0; p < 4; p++) {
+        smoothY = smoothLoop(smoothY, 5);
       }
     }
     for (let i = 0; i < n; i++) pts[i].y = Math.max(0, smoothY[i]);
 
     this.points = pts;
-    this.tangents = new Array(n);    // tangente horizontale unitaire (tx, 0, tz)
-    this.tangents3D = new Array(n);  // tangente 3D unitaire (tx, ty, tz)
-    this.rights = new Array(n);      // vecteur droite horizontal (-tz, 0, tx)
-    this.slopes = new Float32Array(n); // pente longitudinale dy/ds (+ = montée, - = descente)
+    this.tangents = new Array(n);       // tangente horizontale unitaire (tx, 0, tz)
+    this.tangents3D = new Array(n);     // tangente 3D unitaire (tx, ty, tz)
+    this.rights = new Array(n);         // vecteur droite horizontal (-tz, 0, tx)
+    this.segLengths2D = new Float32Array(n); // longueur horizontale 2D exacte de chaque segment [i -> i+1]
+    this.slopes = new Float32Array(n);  // pente longitudinale dy/ds2D (+ = montée, - = descente)
+    this.roadNormals = new Array(n);    // normale unitaire 3D de surface (-tx*slope, 1, -tz*slope)
 
     for (let i = 0; i < n; i++) {
-      const a = pts[(i - 1 + n) % n], b = pts[(i + 1) % n];
+      const pCur = pts[i], pNxt = pts[(i + 1) % n];
+      this.segLengths2D[i] = Math.max(0.25, Math.hypot(pNxt.x - pCur.x, pNxt.z - pCur.z));
+    }
+
+    const rawSlopes = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const iPrev = (i - 1 + n) % n, iNext = (i + 1) % n;
+      const a = pts[iPrev], b = pts[iNext];
       const d3 = new THREE.Vector3().subVectors(b, a);
       const t3 = d3.clone().normalize();
       this.tangents3D[i] = t3;
-      this.slopes[i] = (b.y - a.y) / (2 * this.ds);
+      const span2D = Math.max(0.5, this.segLengths2D[iPrev] + this.segLengths2D[i]);
+      rawSlopes[i] = (b.y - a.y) / span2D;
 
       const t = new THREE.Vector3(d3.x, 0, d3.z).normalize();
       this.tangents[i] = t;
       this.rights[i] = new THREE.Vector3(-t.z, 0, t.x);
+    }
+    this.slopes = this.hasRelief ? smoothLoop(rawSlopes, 2) : rawSlopes;
+    for (let i = 0; i < n; i++) {
+      const t = this.tangents[i];
+      const s = this.slopes[i];
+      this.roadNormals[i] = new THREE.Vector3(-t.x * s, 1, -t.z * s).normalize();
     }
 
     // Courbure horizontale signée (+ = virage à droite), lissée
@@ -254,7 +274,12 @@ export class TrackLayout {
     };
 
     // Objets de travail pré-alloués pour éviter toute allocation dans la boucle 60 FPS
-    this._projScratch = { index: 0, s: 0, lateral: 0, dist: 0, y: 0, slope: 0 };
+    this._projScratch = {
+      index: 0, s: 0, lateral: 0, dist: 0, y: 0, slope: 0,
+      nx: 0, ny: 1, nz: 0,
+      normal: new THREE.Vector3(0, 1, 0),
+      tangent: new THREE.Vector3(0, 0, -1),
+    };
     this._samplePosScratch = new THREE.Vector3();
     this._sampleTanScratch = new THREE.Vector3();
     this._sampleOutScratch = { position: this._samplePosScratch, tangent: this._sampleTanScratch, slope: 0 };
@@ -395,16 +420,19 @@ export class TrackLayout {
     if (hint >= 0) {
       for (let o = -window; o <= window; o++) {
         const i = (hint + o + n) % n, p = pts[i];
-        const dy = hasY ? (p.y - y) : 0;
-        const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 7.5;
+        const ady = hasY ? Math.abs(p.y - y) : 0;
+        // Pénalité verticale uniquement au-delà de 6m (pont vs tunnel) pour ne pas décaler l'indice dans les montées
+        const vPen = ady > 6.0 ? (ady - 6.0) * (ady - 6.0) * 12.0 : 0;
+        const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + vPen;
         if (d < bestD) { bestD = d; best = i; }
       }
       if (bestD < 32 * 32) return best;
     }
     for (let i = 0; i < n; i++) {
       const p = pts[i];
-      const dy = hasY ? (p.y - y) : 0;
-      const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + dy * dy * 9.0;
+      const ady = hasY ? Math.abs(p.y - y) : 0;
+      const vPen = ady > 6.0 ? (ady - 6.0) * (ady - 6.0) * 12.0 : 0;
+      const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) + vPen;
       if (d < bestD) { bestD = d; best = i; }
     }
     return best;
@@ -460,19 +488,72 @@ export class TrackLayout {
     }
 
     const i = this.findNearestIndex(x, z, hint, 65, y);
-    const n = this.points.length;
-    const p = this.points[i], t = this.tangents[i], r = this.rights[i];
-    const dx = x - p.x, dz = z - p.z;
-    const along = clamp(dx * t.x + dz * t.z, -this.ds, this.ds);
-    const pAdj = along >= 0 ? this.points[(i + 1) % n] : this.points[(i - 1 + n) % n];
-    const frac = Math.min(1, Math.abs(along) / (this.ds || 1));
+    const pts = this.points;
+    const n = pts.length;
+    const iPrev = (i - 1 + n) % n;
+    const iNext = (i + 1) % n;
+
+    // Sélectionne exactement le segment [iPrev, i] ou [i, iNext] le plus proche en 2D
+    const pPrev = pts[iPrev], pCur = pts[i], pNext = pts[iNext];
+    const axA = pCur.x - pPrev.x, azA = pCur.z - pPrev.z;
+    const lenSqA = axA * axA + azA * azA || 1;
+    const uA = clamp(((x - pPrev.x) * axA + (z - pPrev.z) * azA) / lenSqA, 0, 1);
+    const dxA = x - (pPrev.x + axA * uA), dzA = z - (pPrev.z + azA * uA);
+    const distSqA = dxA * dxA + dzA * dzA;
+
+    const axB = pNext.x - pCur.x, azB = pNext.z - pCur.z;
+    const lenSqB = axB * axB + azB * azB || 1;
+    const uB = clamp(((x - pCur.x) * axB + (z - pCur.z) * azB) / lenSqB, 0, 1);
+    const dxB = x - (pCur.x + axB * uB), dzB = z - (pCur.z + azB * uB);
+    const distSqB = dxB * dxB + dzB * dzB;
+
+    const useA = distSqA < distSqB;
+    const i0 = useA ? iPrev : i;
+    const i1 = useA ? i : iNext;
+    const u = useA ? uA : uB;
+
+    const p0 = pts[i0], p1 = pts[i1];
+    if (this.hasRelief) {
+      // Interpolation cubique d'Hermite C1 sur [i0, i1] pour altitude y et pente sans cassure
+      const y0 = p0.y, y1 = p1.y;
+      const m0 = (y1 - pts[(i0 - 1 + n) % n].y) * 0.5;
+      const m1 = (pts[(i1 + 1) % n].y - y0) * 0.5;
+      const u2 = u * u, u3 = u2 * u;
+      out.y = Math.max(0, (2 * u3 - 3 * u2 + 1) * y0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * y1 + (u3 - u2) * m1);
+      const dyDu = (6 * u2 - 6 * u) * y0 + (3 * u2 - 4 * u + 1) * m0 + (-6 * u2 + 6 * u) * y1 + (3 * u2 - 2 * u) * m1;
+      out.slope = dyDu / Math.max(0.5, this.segLengths2D[i0]);
+    } else {
+      out.y = 0;
+      out.slope = 0;
+    }
+
+    const t0 = this.tangents[i0], t1 = this.tangents[i1];
+    let tx = t0.x + (t1.x - t0.x) * u;
+    let tz = t0.z + (t1.z - t0.z) * u;
+    const tLen = Math.hypot(tx, tz) || 1;
+    tx /= tLen;
+    tz /= tLen;
+    const rx = -tz, rz = tx;
+
+    const nLen = Math.hypot(out.slope, 1);
+    const nx = (-tx * out.slope) / nLen;
+    const ny = 1 / nLen;
+    const nz = (-tz * out.slope) / nLen;
+
+    const pxInterp = p0.x + (p1.x - p0.x) * u;
+    const pzInterp = p0.z + (p1.z - p0.z) * u;
+    const dx = x - pxInterp, dz = z - pzInterp;
+
     out.index = i;
-    out.s = wrap(i * this.ds + dx * t.x + dz * t.z, this.length);
-    out.lateral = dx * r.x + dz * r.z;
+    out.s = wrap((i0 + u) * this.ds, this.length);
+    out.lateral = dx * rx + dz * rz;
     out.dist = Math.hypot(dx, dz);
-    out.y = Math.max(0, p.y + (pAdj.y - p.y) * frac);
-    out.slope = this.slopes[i];
-    out.tangent = t;
+    out.nx = nx;
+    out.ny = ny;
+    out.nz = nz;
+    if (out.normal) out.normal.set(nx, ny, nz);
+    if (!out.tangent) out.tangent = new THREE.Vector3();
+    out.tangent.set(tx, 0, tz);
     return out;
   }
 

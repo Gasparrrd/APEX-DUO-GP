@@ -110,6 +110,10 @@ export class TrackBuilder {
     });
     groundBody.addShape(new CANNON.Plane());
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    // Abaisse le plan infini sur les circuits avec relief pour éviter tout conflit à y = 0 avec le Trimesh routier
+    if (this.layout.hasRelief) {
+      groundBody.position.y = -0.50;
+    }
     this.world.addBody(groundBody);
     this.physicsBodies.push(groundBody);
   }
@@ -218,8 +222,18 @@ export class TrackBuilder {
       positions[(k + 1) * 3 + 1] = yRoad;
       positions[(k + 1) * 3 + 2] = p.z + r.z * hw;
 
-      normals[k * 3 + 1] = 1;
-      normals[(k + 1) * 3 + 1] = 1;
+      const rn = L.roadNormals ? L.roadNormals[idx] : null;
+      if (rn) {
+        normals[k * 3] = rn.x;
+        normals[k * 3 + 1] = rn.y;
+        normals[k * 3 + 2] = rn.z;
+        normals[(k + 1) * 3] = rn.x;
+        normals[(k + 1) * 3 + 1] = rn.y;
+        normals[(k + 1) * 3 + 2] = rn.z;
+      } else {
+        normals[k * 3 + 1] = 1;
+        normals[(k + 1) * 3 + 1] = 1;
+      }
 
       uvs[k * 2] = 0; uvs[k * 2 + 1] = v;
       uvs[(k + 1) * 2] = 1; uvs[(k + 1) * 2 + 1] = v;
@@ -279,8 +293,8 @@ export class TrackBuilder {
       const segCount = Math.ceil((end - start) / step);
       if (segCount <= 0) continue;
 
-      const vertices = new Float32Array((segCount + 1) * 2 * 3);
-      const indices = new Int32Array(segCount * 2 * 3);
+      const vertices = new Float32Array((segCount + 1) * 3 * 3);
+      const indices = new Int32Array(segCount * 4 * 3);
 
       const midIdx = (start + Math.floor(segCount * 0.5) * step) % n;
       const pMid = L.points[midIdx];
@@ -290,22 +304,28 @@ export class TrackBuilder {
         const idx = (start + s * step) % n;
         const p = L.points[idx];
         const r = L.rights[idx];
-        const baseV = s * 6;
+        const baseV = s * 9;
 
-        vertices[baseV] = (p.x - r.x * halfWidth) - ox;
+        vertices[baseV]     = (p.x - r.x * halfWidth) - ox;
         vertices[baseV + 1] = p.y - oy;
         vertices[baseV + 2] = (p.z - r.z * halfWidth) - oz;
 
-        vertices[baseV + 3] = (p.x + r.x * halfWidth) - ox;
+        vertices[baseV + 3] = p.x - ox;
         vertices[baseV + 4] = p.y - oy;
-        vertices[baseV + 5] = (p.z + r.z * halfWidth) - oz;
+        vertices[baseV + 5] = p.z - oz;
+
+        vertices[baseV + 6] = (p.x + r.x * halfWidth) - ox;
+        vertices[baseV + 7] = p.y - oy;
+        vertices[baseV + 8] = (p.z + r.z * halfWidth) - oz;
 
         if (s < segCount) {
-          const l0 = s * 2, r0 = s * 2 + 1;
-          const l1 = (s + 1) * 2, r1 = (s + 1) * 2 + 1;
-          const baseI = s * 6;
-          indices[baseI] = l0;     indices[baseI + 1] = r0;     indices[baseI + 2] = l1;
-          indices[baseI + 3] = r0; indices[baseI + 4] = r1;     indices[baseI + 5] = l1;
+          const l0 = s * 3, c0 = s * 3 + 1, r0 = s * 3 + 2;
+          const l1 = (s + 1) * 3, c1 = (s + 1) * 3 + 1, r1 = (s + 1) * 3 + 2;
+          const baseI = s * 12;
+          indices[baseI]     = l0; indices[baseI + 1]  = c0; indices[baseI + 2]  = l1;
+          indices[baseI + 3] = c0; indices[baseI + 4]  = c1; indices[baseI + 5]  = l1;
+          indices[baseI + 6] = c0; indices[baseI + 7]  = r0; indices[baseI + 8]  = r1;
+          indices[baseI + 9] = c0; indices[baseI + 10] = r1; indices[baseI + 11] = c1;
         }
       }
 

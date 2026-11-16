@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>APEX DUO GP — Course 3D Solo, Écran Scindé & Multijoueur P2P</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1522'/%3E%3Ctext x='32' y='44' font-size='36' text-anchor='middle'%3E%F0%9F%8F%8E%EF%B8%8F%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="css/style.css?v=42" />
+  <link rel="stylesheet" href="css/style.css?v=43" />
   <!-- PeerJS (WebRTC DataChannel P2P à très faible latence) -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script type="importmap">
@@ -62,6 +62,14 @@
       <div class="brand-block">
         <span class="brand-badge">3D RACING</span>
         <h1>APEX DUO <span class="accent">GP</span></h1>
+      </div>
+      <div id="garage-pilot-bar" class="garage-pilot-bar">
+        <span class="pilot-bar-icon">👤</span>
+        <span class="pilot-bar-label">PILOTE :</span>
+        <strong id="garage-current-pseudo" class="pilot-bar-name">Pilote</strong>
+        <button type="button" id="btn-change-pseudo" class="pilot-bar-edit-btn" title="Modifier votre pseudo à tout moment">
+          ✏️ Changer de pseudo
+        </button>
       </div>
       <div class="orbit-hint">
         <span class="orbit-icon">⟳</span>
@@ -173,11 +181,12 @@
         </div>
       </aside>
 
-      <!-- Panneau droit : Onglet "Paramètres" (Circuit, Météo, Adhérence, IA) & Onglet "Contrôles" -->
+      <!-- Panneau droit : Onglet "Paramètres", Onglet "Records" & Onglet "Contrôles" -->
       <aside id="garage-settings-panel" class="glass-panel garage-settings">
         <div class="lobby-tabs">
           <button type="button" class="lobby-tab active" data-lobby-tab="settings">⚙ Paramètres</button>
-          <button type="button" class="lobby-tab" data-lobby-tab="controls">🎮 Contrôles AZERTY</button>
+          <button type="button" class="lobby-tab" data-lobby-tab="records" id="btn-lobby-tab-records">🏆 Records</button>
+          <button type="button" class="lobby-tab" data-lobby-tab="controls">🎮 Contrôles</button>
         </div>
 
         <!-- Contenu Onglet 1 : Paramètres de Course, Circuit, Météo, Adhérence & IA -->
@@ -455,6 +464,31 @@
           </p>
         </div>
 
+        <!-- Contenu Onglet 3 : Records Mondiaux (Top 3 par circuit & durée) -->
+        <div id="lobby-panel-records" class="lobby-tab-content hidden">
+          <div class="records-toolbar">
+            <div class="records-filter-wrap">
+              <label for="records-circuit-filter">Circuit</label>
+              <select id="records-circuit-filter">
+                <option value="all">Tous les circuits (5)</option>
+                <option value="flat">1 · Plaine</option>
+                <option value="mountain">2 · Montagne</option>
+                <option value="valley">3 · Vallée &amp; Pont</option>
+                <option value="lake">4 · Lac &amp; Végétation</option>
+                <option value="grotto">5 · Le Col de la Grotte</option>
+              </select>
+            </div>
+            <div class="records-toolbar-actions">
+              <span id="records-sync-status" class="records-sync-badge">🌐 En ligne</span>
+              <button type="button" id="btn-refresh-records" class="records-refresh-btn" title="Actualiser les records mondiaux">🔄</button>
+            </div>
+          </div>
+          <p class="records-legend">
+            Top 3 mondial par circuit : <strong>Meilleur tour (1 tour)</strong> et <strong>Course complète (2, 3, 5 tours)</strong>. Le détenteur du record #1 génère un fantôme 👻 en course !
+          </p>
+          <div id="lobby-records-list" class="lobby-records-list"></div>
+        </div>
+
         <!-- Pied de panneau fixe (toujours visible en bas sans avoir à scroller) -->
         <div id="garage-action-footer" class="garage-action-footer">
           <button type="button" id="btn-guest-ready" class="guest-ready-btn hidden">
@@ -484,10 +518,31 @@
     <!-- Ligne de séparation centrale nette (masquée automatiquement en Mode Solo) -->
     <div id="split-divider"></div>
 
-    <!-- Bouton Pause et Mini-carte au centre avec Télémétrie du Vent à droite -->
-    <button type="button" id="btn-hud-pause" class="hud-pause-btn" title="Pause (Échap)">❚❚ PAUSE</button>
+    <!-- Rétroviseur central haut (25vw x 12vh, actif uniquement lorsqu'il n'y a qu'un joueur à l'écran) -->
+    <div id="rearview-mirror-frame" class="rearview-mirror-frame hidden" aria-label="Rétroviseur arrière">
+      <svg class="rearview-mirror-svg" viewBox="0 0 400 110" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="mirror-glass-sheen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(10, 16, 26, 0.24)" />
+            <stop offset="28%" stop-color="rgba(255, 255, 255, 0.03)" />
+            <stop offset="78%" stop-color="rgba(255, 255, 255, 0)" />
+            <stop offset="100%" stop-color="rgba(8, 12, 20, 0.32)" />
+          </linearGradient>
+        </defs>
+        <path d="M 24,10 Q 200,1 376,10 C 392,12 396,28 395,55 C 394,84 390,102 374,105 Q 200,109 26,105 C 10,102 6,84 5,55 C 4,28 8,12 24,10 Z"
+              fill="url(#mirror-glass-sheen)"
+              stroke="#12151a"
+              stroke-width="6.5"
+              stroke-linejoin="round" />
+        <path d="M 24,10 Q 200,1 376,10 C 392,12 396,28 395,55 C 394,84 390,102 374,105 Q 200,109 26,105 C 10,102 6,84 5,55 C 4,28 8,12 24,10 Z"
+              fill="none"
+              stroke="rgba(210, 224, 240, 0.38)"
+              stroke-width="1.2" />
+      </svg>
+    </div>
 
     <div class="hud-center-cluster">
+      <button type="button" id="btn-hud-pause" class="hud-pause-btn" title="Pause (Échap)">❚❚ PAUSE</button>
       <div class="minimap-box">
         <canvas id="minimap-canvas" width="170" height="145"></canvas>
         <div id="hud-env-badge" class="env-badge">Ensoleillé (Sec)</div>
@@ -548,7 +603,7 @@
           <span class="stat-label">TOUR</span>
           <strong id="p1-lap">1 / 3</strong>
         </div>
-        <div class="hud-stat-pill mono">
+        <div class="hud-stat-pill mono hud-timer-pill">
           <span class="stat-label">CHRONO</span>
           <strong id="p1-lap-time">0:00.000</strong>
         </div>
@@ -713,18 +768,41 @@
         </button>
       </div>
 
-      <div id="results-table-scroll" class="results-table-scroll">
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th>Pos</th>
-              <th>Pilote</th>
-              <th>Temps Total</th>
-              <th>Meilleur Tour</th>
-            </tr>
-          </thead>
-          <tbody id="results-tbody"></tbody>
-        </table>
+      <div class="results-split-layout">
+        <div class="results-standings-col">
+          <div id="results-table-scroll" class="results-table-scroll">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th>Pos</th>
+                  <th>Pilote</th>
+                  <th>Temps Total</th>
+                  <th>Meilleur Tour</th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="results-world-records-col" class="results-records-col">
+          <div class="results-records-header">
+            <span class="results-records-badge">🌍 RECORDS MONDIAUX DU MODE</span>
+            <strong id="results-records-mode-label" class="results-records-mode">1 · Plaine — 3 tours</strong>
+          </div>
+
+          <div id="results-record-banner" class="results-record-banner hidden"></div>
+
+          <div class="results-wr-block">
+            <h4 class="results-wr-title">⚡ Top 3 Mondial — Meilleur Tour (1 tour)</h4>
+            <div id="results-wr-bestlap-body" class="record-podium-list"></div>
+          </div>
+
+          <div class="results-wr-block">
+            <h4 class="results-wr-title">🏁 Top 3 Mondial — Course Complète (<span id="results-wr-laps-title">3 tours</span>)</h4>
+            <div id="results-wr-race-body" class="record-podium-list"></div>
+          </div>
+        </div>
       </div>
 
       <div class="modal-actions row">
@@ -749,7 +827,7 @@
           type="text"
           id="guest-modal-name-input"
           class="guest-modal-input"
-          maxlength="18"
+          maxlength="16"
           placeholder="Votre pseudo (ex. PILOTE 2)"
           value="PILOTE 2"
           autocomplete="off"
@@ -762,9 +840,45 @@
     </div>
   </section>
 
+  <!-- ==================================================================== -->
+  <!-- 6. MODALE OBLIGATOIRE DE PSEUDO PILOTE                               -->
+  <!-- ==================================================================== -->
+  <section id="pseudo-welcome-modal" class="modal-backdrop pseudo-welcome-backdrop hidden">
+    <div class="glass-panel modal-card pseudo-welcome-card">
+      <span class="brand-badge">IDENTITÉ DU PILOTE</span>
+      <h2 id="pseudo-modal-title">PILOTE, IDENTIFIEZ-VOUS</h2>
+      <p class="modal-subtitle">
+        Saisissez votre pseudo (2 à 16 caractères). Il sera affiché sur le podium 3D, en course, en multijoueur en ligne et dans les <strong>records mondiaux</strong>.
+      </p>
+      <form id="pseudo-welcome-form" class="pseudo-welcome-form" novalidate>
+        <input
+          type="text"
+          id="pseudo-welcome-input"
+          class="guest-modal-input pseudo-welcome-input"
+          minlength="2"
+          maxlength="16"
+          placeholder="Votre pseudo (ex. ApexDriver)"
+          autocomplete="off"
+        />
+        <p id="pseudo-welcome-error" class="pseudo-welcome-error hidden">
+          Veuillez saisir un pseudo valide (entre 2 et 16 caractères).
+        </p>
+        <div class="pseudo-modal-actions">
+          <button type="submit" id="btn-confirm-welcome-pseudo" class="cta-btn">
+            <span id="pseudo-confirm-label">VALIDER MON PSEUDO</span>
+            <span class="cta-arrow">▶</span>
+          </button>
+          <button type="button" id="btn-cancel-welcome-pseudo" class="secondary-btn hidden">
+            ANNULER
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
   <!-- Musique d'ambiance du Salon / Garage (fichiers MP3 externe avec fade-in / fade-out) -->
   <audio id="lobby-music" src="./salon.mp3" loop preload="auto"></audio>
 
-  <script type="module" src="js/main.js?v=42"></script>
+  <script type="module" src="js/main.js?v=43"></script>
 </body>
 </html>

@@ -64,6 +64,7 @@ export class HUDController {
     this._humiliationTexts = ['', ''];
     this.countdownEl = document.getElementById('race-countdown');
     this.envBadgeEl = document.getElementById('hud-env-badge');
+    this.rearviewFrame = document.getElementById('rearview-mirror-frame');
     this.minimapCanvas = document.getElementById('minimap-canvas');
     this.minimapCtx = this.minimapCanvas ? this.minimapCanvas.getContext('2d') : null;
     this.layout = null;
@@ -90,6 +91,7 @@ export class HUDController {
     if (this.isSpectator) {
       if (this.raceOverlay) this.raceOverlay.classList.add('solo-mode');
       if (this.splitDivider) this.splitDivider.classList.add('hidden');
+      if (this.rearviewFrame) this.rearviewFrame.classList.add('hidden');
       if (this.hudLeft) this.hudLeft.classList.add('hidden');
       if (this.hudRight) this.hudRight.classList.add('hidden');
       if (this.spectatorHud) this.spectatorHud.classList.remove('hidden');
@@ -100,10 +102,24 @@ export class HUDController {
     const isSolo = this.playerCount === 1;
     if (this.raceOverlay) this.raceOverlay.classList.toggle('solo-mode', isSolo);
     if (this.splitDivider) this.splitDivider.classList.toggle('hidden', isSolo);
+    if (this.rearviewFrame) this.rearviewFrame.classList.toggle('hidden', !isSolo);
     if (this.hudLeft) this.hudLeft.classList.remove('hidden');
     if (this.hudRight) this.hudRight.classList.toggle('hidden', isSolo);
     if (this.spectatorHud) this.spectatorHud.classList.add('hidden');
     if (this.spectatorTelemetry) this.spectatorTelemetry.classList.add('hidden');
+
+    // En mode Solo, place le chrono à droite juste à gauche du bouton Pause ; en 2J, le remet dans la barre J1
+    const p1Timer = this.raceOverlay?.querySelector('.hud-timer-pill');
+    const centerCluster = this.raceOverlay?.querySelector('.hud-center-cluster');
+    const pauseBtn = document.getElementById('btn-hud-pause');
+    const leftTopBar = this.hudLeft?.querySelector('.hud-top-bar');
+    if (p1Timer) {
+      if (isSolo && centerCluster && pauseBtn) {
+        centerCluster.insertBefore(p1Timer, pauseBtn);
+      } else if (!isSolo && leftTopBar) {
+        leftTopBar.appendChild(p1Timer);
+      }
+    }
   }
 
   /** Précalcule le tracé sur la mini-carte. */
@@ -450,7 +466,7 @@ export class HUDController {
    * affiche le score et le chrono du ou des joueurs en haut de la carte,
    * juste au-dessus du bouton « Mode Spectateur ».
    */
-  renderFinalResults(standings, raceTime = 0) {
+  renderFinalResults(standings, raceTime = 0, worldRecordsInfo = null) {
     const tbody = document.getElementById('results-tbody');
     const scrollWrap = document.getElementById('results-table-scroll');
     const subtitle = document.getElementById('results-winner-subtitle');
@@ -482,10 +498,11 @@ export class HUDController {
         playerSummary.innerHTML = humanPlayers.map((p) => {
           const totalStr = p.finished ? formatTime(p.finishTime) : formatTime(raceTime > 0 ? raceTime : p.currentLapTime);
           const bestStr = isFinite(p.bestLapTime) ? formatTime(p.bestLapTime) : '--:--.---';
+          const safeTag = this._escapeHtml(p.displayTag || p.name);
           return `
             <div class="player-score-card">
               <span class="color-dot" style="background:${p.model.cfg.color}"></span>
-              <strong>${p.displayTag || p.name}</strong>
+              <strong>${safeTag}</strong>
               <span class="score-rank">${ordinalFr(p.rank)} / ${standings.length}</span>
               <span class="score-time">Chrono : ${totalStr}</span>
               <span class="score-best">Meilleur tour : ${bestStr}</span>
@@ -508,12 +525,13 @@ export class HUDController {
       const hasBest = isFinite(v.bestLapTime) && v.bestLapTime > 0;
       const isOverallBest = hasBest && isFinite(overallBestLap) && Math.abs(v.bestLapTime - overallBestLap) < 1e-4;
       const bestLapText = hasBest ? formatTime(v.bestLapTime) : '--:--.---';
+      const safeName = this._escapeHtml(v.name);
       tr.innerHTML = `
         <td class="col-rank"><span class="rank-pill rank-${idx + 1}">${ordinalFr(idx + 1)}</span></td>
         <td class="col-driver">
           <span class="color-dot" style="background:${v.model.cfg.color}"></span>
-          <span>${v.name}</span>
-          ${!v.isAI ? `<span class="tag-human">${v.id.toUpperCase()}</span>` : ''}
+          <span>${safeName}</span>
+          ${!v.isAI ? `<span class="tag-human">${this._escapeHtml(v.id.toUpperCase())}</span>` : ''}
         </td>
         <td class="col-time">${totalTimeText}</td>
         <td class="col-best${isOverallBest ? ' best-lap-record' : ''}">${bestLapText}${isOverallBest ? '<span class="best-lap-badge" title="Meilleur tour de la course">⚡</span>' : ''}</td>
@@ -523,6 +541,116 @@ export class HUDController {
 
     if (scrollWrap) {
       scrollWrap.scrollTop = prevScrollTop;
+    }
+
+    if (worldRecordsInfo) {
+      this.renderWorldRecordsResults(worldRecordsInfo);
+    }
+  }
+
+  _escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  _renderRecordPodiumHtml(entries, { myPseudo = '', myDeviceId = '', highlightEntryIds = [], showGhostBadge = false } = {}) {
+    const medals = ['🥇', '🥈', '🥉'];
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return '<div class="record-row is-empty">— Aucun record enregistré —</div>';
+    }
+    return [0, 1, 2].map((idx) => {
+      const e = entries[idx];
+      if (!e) {
+        return `<div class="record-row is-empty"><span>${medals[idx]} Libre</span><span>--:--.---</span></div>`;
+      }
+      const isNewEntry = highlightEntryIds.includes(e.entryId);
+      const isMe = (myDeviceId && e.deviceId)
+        ? (e.deviceId === myDeviceId)
+        : Boolean(myPseudo && e.pseudo && e.pseudo.toLowerCase() === myPseudo.toLowerCase());
+      const classes = ['record-row', `is-rank-${idx + 1}`];
+      if (isMe) classes.push('is-me');
+      if (isNewEntry) classes.push('is-new-entry');
+      const ghostHtml = (showGhostBadge && idx === 0 && e.hasGhost)
+        ? '<span class="record-ghost-pill" title="Fantôme #1 actif en course">👻</span>'
+        : '';
+      return `
+        <div class="${classes.join(' ')}">
+          <span class="record-left">
+            <span class="record-medal">${medals[idx]}</span>
+            <span class="record-pseudo">${this._escapeHtml(e.pseudo || 'Pilote')}</span>
+            ${ghostHtml}
+          </span>
+          <span class="record-time">${formatTime(e.time)}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * Met à jour l'encart « Records mondiaux du mode » à côté du classement sur l'écran de fin de course.
+   */
+  renderWorldRecordsResults(info) {
+    if (!info) return;
+    const modeLabelEl = document.getElementById('results-records-mode-label');
+    const lapsTitleEl = document.getElementById('results-wr-laps-title');
+    const bannerEl = document.getElementById('results-record-banner');
+    const bestLapBody = document.getElementById('results-wr-bestlap-body');
+    const raceBody = document.getElementById('results-wr-race-body');
+
+    const laps = Number(info.laps) || 3;
+    const circuitLabel = info.circuitLabel || 'Circuit';
+
+    if (modeLabelEl) {
+      modeLabelEl.textContent = `${circuitLabel} — ${laps} tours`;
+    }
+    if (lapsTitleEl) {
+      lapsTitleEl.textContent = `${laps} tours`;
+    }
+
+    if (bannerEl) {
+      if (info.isNewRaceWR && info.isNewBestLapWR) {
+        bannerEl.textContent = '🏆 DOUBLE RECORD MONDIAL #1 ! (Meilleur tour + Course)';
+        bannerEl.className = 'results-record-banner';
+      } else if (info.isNewRaceWR) {
+        bannerEl.textContent = '🏆 NOUVEAU RECORD MONDIAL #1 DE LA COURSE ! (👻 Fantôme mis à jour)';
+        bannerEl.className = 'results-record-banner';
+      } else if (info.isNewBestLapWR) {
+        bannerEl.textContent = '⚡ NOUVEAU RECORD MONDIAL #1 DU MEILLEUR TOUR !';
+        bannerEl.className = 'results-record-banner';
+      } else if ((info.raceRank && info.raceRank <= 3) || (info.bestLapRank && info.bestLapRank <= 3)) {
+        const parts = [];
+        if (info.raceRank && info.raceRank <= 3) parts.push(`Course #${info.raceRank}`);
+        if (info.bestLapRank && info.bestLapRank <= 3) parts.push(`Meilleur tour #${info.bestLapRank}`);
+        bannerEl.textContent = `🎉 ENTRÉE DANS LE TOP 3 MONDIAL ! (${parts.join(' · ')})`;
+        bannerEl.className = 'results-record-banner is-top3';
+      } else {
+        bannerEl.textContent = '';
+        bannerEl.className = 'results-record-banner hidden';
+      }
+    }
+
+    const highlightIds = Array.isArray(info.highlightEntryIds) ? info.highlightEntryIds : [];
+    const records = info.circuitRecords || { bestLap: [], race: {} };
+    const raceList = (records.race && records.race[String(laps)]) || [];
+
+    if (bestLapBody) {
+      bestLapBody.innerHTML = this._renderRecordPodiumHtml(records.bestLap || [], {
+        myPseudo: info.myPseudo || '',
+        myDeviceId: info.myDeviceId || '',
+        highlightEntryIds: highlightIds,
+        showGhostBadge: false,
+      });
+    }
+    if (raceBody) {
+      raceBody.innerHTML = this._renderRecordPodiumHtml(raceList, {
+        myPseudo: info.myPseudo || '',
+        myDeviceId: info.myDeviceId || '',
+        highlightEntryIds: highlightIds,
+        showGhostBadge: true,
+      });
     }
   }
 }

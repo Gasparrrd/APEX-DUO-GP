@@ -20,6 +20,7 @@ import { BoostTokenSystem } from '../track/boostTokens.js?v=42';
 import { Vehicle } from '../physics/vehicle.js?v=42';
 import { AIDriver, generateBotAIProfiles } from '../ai/aiDriver.js?v=42';
 import { ChaseCamera } from '../gfx/chaseCamera.js?v=42';
+import { CarModel } from '../gfx/carModel.js?v=42';
 import { ParticleSystem } from '../gfx/particles.js?v=42';
 import { WeatherSystem } from '../gfx/weather.js?v=42';
 import { soundManager } from '../core/audio.js?v=42';
@@ -74,10 +75,58 @@ export class RaceScene {
     this.boostTokens = new BoostTokenSystem(this.layout, this.scene);
     this.hud.initMinimap(this.layout);
 
-    // Caméras tierce personne (near = 0.1, far = 1000)
+    // Caméras tierce personne (near = 0.1, far = 1000) + Rétroviseur arrière
     const halfAspect = (window.innerWidth * 0.5) / Math.max(1, window.innerHeight);
     this.cam1 = new ChaseCamera(halfAspect);
     this.cam2 = new ChaseCamera(halfAspect);
+    const mirrorAspect = (window.innerWidth * 0.2675) / Math.max(1, window.innerHeight * 0.1284);
+    this.rearCamera = new THREE.PerspectiveCamera(35, mirrorAspect, 0.1, CONFIG.render.cameraFar || 3000);
+    this._rearTarget = null;
+    this._rearMirrorScene = new THREE.Scene();
+    this._rearMirrorCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const mirrorGeo = new THREE.PlaneGeometry(2, 2);
+    // Inverse horizontalement les UVs pour un véritable effet miroir (droite -> droite)
+    const uvAttr = mirrorGeo.attributes.uv;
+    for (let i = 0; i < uvAttr.count; i++) {
+      uvAttr.setX(i, 1 - uvAttr.getX(i));
+    }
+    // Masque alpha correspondant exactement à la silhouette bombée du rétroviseur (viewBox 400x110)
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = 512;
+    maskCanvas.height = 140;
+    const mctx = maskCanvas.getContext('2d');
+    mctx.fillStyle = '#000';
+    mctx.fillRect(0, 0, 512, 140);
+    mctx.save();
+    mctx.scale(512 / 400, 140 / 110);
+    mctx.fillStyle = '#fff';
+    mctx.beginPath();
+    mctx.moveTo(24, 10);
+    mctx.quadraticCurveTo(200, 1, 376, 10);
+    mctx.bezierCurveTo(392, 12, 396, 28, 395, 55);
+    mctx.bezierCurveTo(394, 84, 390, 102, 374, 105);
+    mctx.quadraticCurveTo(200, 109, 26, 105);
+    mctx.bezierCurveTo(10, 102, 6, 84, 5, 55);
+    mctx.bezierCurveTo(4, 28, 8, 12, 24, 10);
+    mctx.closePath();
+    mctx.fill();
+    mctx.restore();
+    const mirrorAlphaTex = new THREE.CanvasTexture(maskCanvas);
+    mirrorAlphaTex.minFilter = THREE.LinearFilter;
+    mirrorAlphaTex.magFilter = THREE.LinearFilter;
+
+    this._rearMirrorMat = new THREE.MeshBasicMaterial({
+      alphaMap: mirrorAlphaTex,
+      transparent: true,
+      alphaTest: 0.05,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this._rearMirrorScene.add(new THREE.Mesh(mirrorGeo, this._rearMirrorMat));
+    this._rearCamPos = new THREE.Vector3();
+    this._rearCamLook = new THREE.Vector3();
+    this._rearCamFwd = new THREE.Vector3();
 
     this.playerCount = 2; // 0 = Spectateur Salon, 1 = Solo, 2 = Écran Scindé ou 2J en Ligne
     this.isOnline = false;
@@ -112,6 +161,18 @@ export class RaceScene {
     // Étiquettes DOM flottantes des pseudos en course (viewport 0 = plein écran ou moitié gauche, viewport 1 = moitié droite)
     this._nameTagElsVp0 = [];
     this._nameTagElsVp1 = [];
+    this._ghostTagElVp0 = null;
+    this._ghostTagElVp1 = null;
+
+    // Voiture fantôme du record mondial (#1) et enregistreur 15 Hz de trajectoire joueur
+    this.ghostCar = null;
+    this.ghostData = null;
+    this.ghostRecorders = new Map();
+    this.ghostSampleInterval = 1 / 15;
+    this._ghostPosA = new THREE.Vector3();
+    this._ghostPosB = new THREE.Vector3();
+    this._ghostQuatA = new THREE.Quaternion();
+    this._ghostQuatB = new THREE.Quaternion();
 
     this.state = 'idle'; // 'countdown' | 'racing' | 'finished'
     this.resultsShownOnce = false;
@@ -483,13 +544,16 @@ export class RaceScene {
       this.localPlayer = null;
     }
 
+    this.ghostData = raceSettings.ghostData || null;
+    this._setupGhostCar(this.ghostData);
+
     this.standings = [...this.vehicles];
     this._initRaceNameTagElements();
     this.resetRace(raceSettings.tokenLayout || null);
   }
 
   /**
-   * Initialise les étiquettes DOM flottantes des pseudos au-dessus de tous les véhicules (Joueur 1, Joueur 2, BOT 1..5).
+   * Initialise les étiquettes DOM flottantes des pseudos au-dessus de tous les véhicules (Joueur 1, Joueur 2, BOT 1..5, et Fantôme WR #1).
    */
   _initRaceNameTagElements() {
     const vp0 = document.getElementById('race-nametags-vp0');
@@ -500,6 +564,8 @@ export class RaceScene {
     vp1.innerHTML = '';
     this._nameTagElsVp0 = [];
     this._nameTagElsVp1 = [];
+    this._ghostTagElVp0 = null;
+    this._ghostTagElVp1 = null;
 
     for (let i = 0; i < this.vehicles.length; i++) {
       const v = this.vehicles[i];
@@ -516,6 +582,21 @@ export class RaceScene {
       el1.textContent = label;
       vp1.appendChild(el1);
       this._nameTagElsVp1.push(el1);
+    }
+
+    if (this.ghostCar) {
+      const ghostLabel = `👻 ${this.ghostCar.pseudo} · WR #1`;
+      const gEl0 = document.createElement('div');
+      gEl0.className = 'race-car-nametag is-ghost';
+      gEl0.textContent = ghostLabel;
+      vp0.appendChild(gEl0);
+      this._ghostTagElVp0 = gEl0;
+
+      const gEl1 = document.createElement('div');
+      gEl1.className = 'race-car-nametag is-ghost';
+      gEl1.textContent = ghostLabel;
+      vp1.appendChild(gEl1);
+      this._ghostTagElVp1 = gEl1;
     }
   }
 
@@ -537,56 +618,73 @@ export class RaceScene {
     vp1.classList.toggle('split-vp-right', isSplit);
 
     if (!isSplit) {
-      this._projectTagsForViewport(this.cam1.camera, this._nameTagElsVp0, w, h, false);
+      this._projectTagsForViewport(this.cam1.camera, this._nameTagElsVp0, w, h, false, this._ghostTagElVp0);
     } else {
       const halfW = Math.floor(w * 0.5);
       const rightW = w - halfW;
-      this._projectTagsForViewport(this.cam1.camera, this._nameTagElsVp0, halfW, h, true);
-      this._projectTagsForViewport(this.cam2.camera, this._nameTagElsVp1, rightW, h, true);
+      this._projectTagsForViewport(this.cam1.camera, this._nameTagElsVp0, halfW, h, true, this._ghostTagElVp0);
+      this._projectTagsForViewport(this.cam2.camera, this._nameTagElsVp1, rightW, h, true, this._ghostTagElVp1);
     }
   }
 
-  _projectTagsForViewport(camera, tagElements, vpWidth, vpHeight, isCompactSplit) {
+  _projectSingleNameTag(camera, pos, tagHeightOffset, el, vpWidth, vpHeight, isCompactSplit) {
+    if (!el) return;
+    const dx = pos.x - camera.position.x;
+    const dy = pos.y - camera.position.y;
+    const dz = pos.z - camera.position.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+
+    if (distSq > 185 * 185) {
+      if (el.style.display !== 'none') el.style.display = 'none';
+      return;
+    }
+
+    _tagWorldPos.set(pos.x, pos.y + tagHeightOffset, pos.z);
+    _tagWorldPos.project(camera);
+
+    if (_tagWorldPos.z < -1 || _tagWorldPos.z > 1) {
+      if (el.style.display !== 'none') el.style.display = 'none';
+      return;
+    }
+
+    const sx = (_tagWorldPos.x * 0.5 + 0.5) * vpWidth;
+    const sy = (-_tagWorldPos.y * 0.5 + 0.5) * vpHeight;
+
+    if (sx < -40 || sx > vpWidth + 40 || sy < -20 || sy > vpHeight + 20) {
+      if (el.style.display !== 'none') el.style.display = 'none';
+      return;
+    }
+
+    // Masque les étiquettes flottantes qui recouvriraient la zone du rétroviseur (25vw x 12vh)
+    if (!isCompactSplit && this.isRearviewActive()) {
+      if (sx >= vpWidth * 0.365 && sx <= vpWidth * 0.635 && sy >= 0 && sy <= vpHeight * 0.14 + 24) {
+        if (el.style.display !== 'none') el.style.display = 'none';
+        return;
+      }
+    }
+
+    if (el.style.display !== 'block') el.style.display = 'block';
+    el.classList.toggle('compact-split', isCompactSplit);
+    el.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
+  }
+
+  _projectTagsForViewport(camera, tagElements, vpWidth, vpHeight, isCompactSplit, ghostTagEl = null) {
     camera.updateMatrixWorld();
     for (let i = 0; i < this.vehicles.length; i++) {
       const v = this.vehicles[i];
       const el = tagElements[i];
       if (!v || !el) continue;
 
-      const pos = v.renderPosition;
-      const dx = pos.x - camera.position.x;
-      const dy = pos.y - camera.position.y;
-      const dz = pos.z - camera.position.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-
-      // Masque les étiquettes trop éloignées (> 185m)
-      if (distSq > 185 * 185) {
-        if (el.style.display !== 'none') el.style.display = 'none';
-        continue;
-      }
-
-      // Pseudo abaissé légèrement au-dessus du toit (0.72 m pour le joueur, toit à ~0.56 m)
-      // afin de dégager la vue vers l'avant sans toucher la carrosserie de la voiture
       const tagHeightOffset = v.isAI ? 0.84 : 0.72;
-      _tagWorldPos.set(pos.x, pos.y + tagHeightOffset, pos.z);
-      _tagWorldPos.project(camera);
+      this._projectSingleNameTag(camera, v.renderPosition, tagHeightOffset, el, vpWidth, vpHeight, isCompactSplit);
+    }
 
-      if (_tagWorldPos.z < -1 || _tagWorldPos.z > 1) {
-        if (el.style.display !== 'none') el.style.display = 'none';
-        continue;
+    if (ghostTagEl) {
+      if (this.ghostCar && this.ghostCar.root.visible) {
+        this._projectSingleNameTag(camera, this.ghostCar.renderPosition, 0.92, ghostTagEl, vpWidth, vpHeight, isCompactSplit);
+      } else if (ghostTagEl.style.display !== 'none') {
+        ghostTagEl.style.display = 'none';
       }
-
-      const sx = (_tagWorldPos.x * 0.5 + 0.5) * vpWidth;
-      const sy = (-_tagWorldPos.y * 0.5 + 0.5) * vpHeight;
-
-      if (sx < -40 || sx > vpWidth + 40 || sy < -20 || sy > vpHeight + 20) {
-        if (el.style.display !== 'none') el.style.display = 'none';
-        continue;
-      }
-
-      if (el.style.display !== 'block') el.style.display = 'block';
-      el.classList.toggle('compact-split', isCompactSplit);
-      el.style.transform = `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) translate(-50%, -100%)`;
     }
   }
 
@@ -665,6 +763,7 @@ export class RaceScene {
     this.physicsAccumulator = 0;
     this.firstPlayerFinishTime = null;
     this.track.setStartLights(0);
+    this._resetGhostStateForRace();
     const windVec = WEATHER_MODIFIERS[this.activeWeather]?.windForce || null;
     this.hud.update(this.players, this.vehicles, 0, this._getSpectatorInfo(), this.localPlayer, this.activeWeather, windVec);
     this._updateRaceNameTags();
@@ -1156,7 +1255,193 @@ export class RaceScene {
     return this._spectatorInfoOut;
   }
 
+  _clearGhostCar() {
+    if (this.ghostCar && this.ghostCar.model) {
+      this.ghostCar.model.dispose();
+    }
+    this.ghostCar = null;
+    this._ghostTagElVp0 = null;
+    this._ghostTagElVp1 = null;
+  }
+
+  /**
+   * Prépare et ajoute à la scène 3D la voiture fantôme du record mondial (#1) sans aucun corps physique.
+   */
+  _setupGhostCar(ghostData) {
+    this._clearGhostCar();
+    if (!ghostData || !Array.isArray(ghostData.samples) || ghostData.samples.length < 9) {
+      return;
+    }
+    const s = ghostData.samples;
+    const model = new CarModel(ghostData.carConfig || {}, { envMap: this.envMap });
+    model.setGhostMode(0.36);
+    this.scene.add(model.root);
+
+    const posX = Number(s[0]) || 0;
+    const posY = Number(s[1]) || 0;
+    const posZ = Number(s[2]) || 0;
+    model.root.position.set(posX, posY, posZ);
+    model.root.quaternion.set(Number(s[3]) || 0, Number(s[4]) || 0, Number(s[5]) || 0, s[6] !== undefined ? Number(s[6]) : 1).normalize();
+
+    this.ghostCar = {
+      deviceId: ghostData.deviceId || null,
+      pseudo: ghostData.pseudo || 'Record #1',
+      time: Number(ghostData.time) || 0,
+      sampleInterval: Number(ghostData.sampleInterval) || this.ghostSampleInterval,
+      samples: s,
+      model,
+      root: model.root,
+      renderPosition: new THREE.Vector3(posX, posY, posZ),
+      renderQuaternion: model.root.quaternion.clone(),
+      wheelSpin: 0,
+      finished: false,
+    };
+  }
+
+  /** Met à jour le fantôme (utile juste avant « Rejouer » si un nouveau record #1 vient d'être battu). */
+  setGhostData(ghostData) {
+    this.ghostData = ghostData || null;
+    this._setupGhostCar(this.ghostData);
+    this._initRaceNameTagElements();
+    this._updateRaceNameTags();
+  }
+
+  /** Réinitialise la position de départ du fantôme et vide les enregistreurs de trajectoire joueur. */
+  _resetGhostStateForRace() {
+    this.ghostRecorders.clear();
+    const targets = (this.isOnline && this.localPlayer) ? [this.localPlayer] : this.players;
+    for (const p of targets) {
+      if (!p) continue;
+      this.ghostRecorders.set(p.id, {
+        nextSampleTime: 0,
+        samples: [],
+        completed: false,
+      });
+    }
+
+    if (this.ghostCar) {
+      const s = this.ghostCar.samples;
+      const posX = Number(s[0]) || 0;
+      const posY = Number(s[1]) || 0;
+      const posZ = Number(s[2]) || 0;
+      this.ghostCar.renderPosition.set(posX, posY, posZ);
+      this.ghostCar.renderQuaternion.set(Number(s[3]) || 0, Number(s[4]) || 0, Number(s[5]) || 0, s[6] !== undefined ? Number(s[6]) : 1).normalize();
+      this.ghostCar.root.position.copy(this.ghostCar.renderPosition);
+      this.ghostCar.root.quaternion.copy(this.ghostCar.renderQuaternion);
+      this.ghostCar.root.visible = true;
+      this.ghostCar.wheelSpin = 0;
+      this.ghostCar.finished = false;
+      this.ghostCar.model.setBoost(false);
+    }
+  }
+
+  /** Anime la voiture fantôme à partir du feu vert (`raceTime >= 0` hors countdown). */
+  _updateGhostCar(dt) {
+    const g = this.ghostCar;
+    if (!g || !g.samples || g.samples.length < 9) return;
+
+    const wheelRestY = CONFIG.car.connectionY - CONFIG.car.suspensionRestLength;
+    const s = g.samples;
+    const totalFrames = Math.floor(s.length / 9);
+    if (totalFrames <= 0) return;
+
+    if (this.state === 'countdown') {
+      g.root.visible = true;
+      for (let i = 0; i < 4; i++) {
+        g.model.setWheel(i, wheelRestY, 0, 0);
+      }
+      g.model.setBoost(false);
+      return;
+    }
+
+    const interval = g.sampleInterval || this.ghostSampleInterval;
+    const exactIdx = Math.max(0, this.raceTime / interval);
+    const i0 = Math.min(totalFrames - 1, Math.floor(exactIdx));
+    const i1 = Math.min(totalFrames - 1, i0 + 1);
+    const alpha = exactIdx - i0;
+
+    const b0 = i0 * 9;
+    const b1 = i1 * 9;
+
+    this._ghostPosA.set(s[b0], s[b0 + 1], s[b0 + 2]);
+    this._ghostPosB.set(s[b1], s[b1 + 1], s[b1 + 2]);
+    g.renderPosition.lerpVectors(this._ghostPosA, this._ghostPosB, alpha);
+
+    this._ghostQuatA.set(s[b0 + 3], s[b0 + 4], s[b0 + 5], s[b0 + 6]).normalize();
+    this._ghostQuatB.set(s[b1 + 3], s[b1 + 4], s[b1 + 5], s[b1 + 6]).normalize();
+    g.renderQuaternion.slerpQuaternions(this._ghostQuatA, this._ghostQuatB, alpha);
+
+    g.root.position.copy(g.renderPosition);
+    g.root.quaternion.copy(g.renderQuaternion);
+
+    const steer = (s[b0 + 7] || 0) + ((s[b1 + 7] || 0) - (s[b0 + 7] || 0)) * alpha;
+    const isBoost = (s[b0 + 8] || 0) > 0.5;
+    const dist = this._ghostPosA.distanceTo(this._ghostPosB);
+    const estSpeed = i1 > i0 ? dist / interval : 0;
+    g.wheelSpin -= (estSpeed * dt) / CONFIG.car.wheelRadius;
+    for (let i = 0; i < 4; i++) {
+      g.model.setWheel(i, wheelRestY, i < 2 ? steer : 0, g.wheelSpin);
+    }
+    g.model.setBoost(isBoost && i0 < totalFrames - 1, this.elapsedTime);
+
+    if (exactIdx >= totalFrames - 1) {
+      g.finished = true;
+      if (this.raceTime > (g.time || (totalFrames * interval)) + 1.5) {
+        g.root.visible = false;
+        g.model.setBoost(false);
+      }
+    }
+  }
+
+  /** Enregistre la position/rotation des joueurs humains locaux à 15 Hz pour le fantôme WR. */
+  _recordPlayersGhostSamples() {
+    if (this.state !== 'racing' && this.state !== 'finished') return;
+    const targets = (this.isOnline && this.localPlayer) ? [this.localPlayer] : this.players;
+    for (const p of targets) {
+      if (!p) continue;
+      const rec = this.ghostRecorders.get(p.id);
+      if (!rec || rec.completed) continue;
+
+      // Capture tant que le joueur n'a pas fini (ou capture sa frame exacte d'arrivée)
+      const shouldPush = (!p.finished && this.raceTime >= rec.nextSampleTime) || p.finished;
+      if (shouldPush && rec.samples.length < 45000) {
+        const rp = p.renderPosition;
+        const rq = p.renderQuaternion;
+        rec.samples.push(
+          Math.round(rp.x * 100) / 100,
+          Math.round(rp.y * 100) / 100,
+          Math.round(rp.z * 100) / 100,
+          Math.round(rq.x * 1000) / 1000,
+          Math.round(rq.y * 1000) / 1000,
+          Math.round(rq.z * 1000) / 1000,
+          Math.round(rq.w * 1000) / 1000,
+          Math.round((p.steerAngle || 0) * 100) / 100,
+          p.isBoosting ? 1 : 0
+        );
+        if (!p.finished) {
+          rec.nextSampleTime = this.raceTime + this.ghostSampleInterval;
+        }
+      }
+
+      if (p.finished) {
+        rec.completed = true;
+      }
+    }
+  }
+
+  /** Retourne la trajectoire compressée enregistrée pour un joueur donné. */
+  getPlayerGhostPayload(playerId) {
+    const rec = this.ghostRecorders.get(playerId);
+    if (!rec || !rec.samples || rec.samples.length < 9) return null;
+    return {
+      sampleInterval: this.ghostSampleInterval,
+      samples: rec.samples.slice(),
+    };
+  }
+
   _clearVehicles() {
+    this._clearGhostCar();
+    this.ghostRecorders.clear();
     for (const v of this.vehicles) v.dispose();
     this.vehicles.length = 0;
     this.standings.length = 0;
@@ -1369,8 +1654,10 @@ export class RaceScene {
     for (let i = 0; i < this.vehicles.length; i++) {
       this.vehicles[i].syncVisuals(dt, this.elapsedTime, this.particles, alpha);
     }
+    this._updateGhostCar(dt);
+    this._recordPlayersGhostSamples();
 
-    // 4) Mise à jour des caméras ChaseCam APRÈS syncVisuals
+    // 4) Mise à jour des caméras ChaseCam (+ Rétroviseur si actif) APRÈS syncVisuals
     if (this.isSpectator) {
       const target = this._getSpectatorInfo()?.target;
       if (target) this.cam1.update(target, dt);
@@ -1381,6 +1668,9 @@ export class RaceScene {
       if (this.playerCount === 2 && this.players[1]) {
         this.cam2.update(this.players[1], dt);
       }
+    }
+    if (this.isRearviewActive()) {
+      this._updateRearviewCamera();
     }
 
     // 5) Jetons sur la piste (cycle dynamique 3–10s), particules, météo et audio
@@ -1489,8 +1779,29 @@ export class RaceScene {
   }
 
   _applyFinishedCruise(vehicle) {
-    vehicle.controls.throttle = 0;
-    vehicle.controls.brake = 0;
+    const targetDist = vehicle.postFinishTargetDistance || 110;
+    const covered = vehicle.postFinishDistance || 0;
+    const remDist = Math.max(0, targetDist - covered);
+    const speed = vehicle.forwardSpeed || 0;
+
+    if (vehicle.parkingLocked || remDist <= 1.5) {
+      vehicle.parkingLocked = true;
+      vehicle.controls.throttle = 0;
+      vehicle.controls.brake = 1.0;
+    } else if (covered < 75 && speed < 10) {
+      // Garde un filet de gaz si la voiture allait s'arrêter avant 75m
+      vehicle.controls.throttle = 0.25;
+      vehicle.controls.brake = 0;
+    } else {
+      const targetSpeed = Math.sqrt(2 * 10.0 * remDist);
+      if (speed > targetSpeed) {
+        vehicle.controls.throttle = 0;
+        vehicle.controls.brake = Math.min(0.90, Math.max(0.12, (speed * speed) / (2 * Math.max(2, remDist) * 28)));
+      } else {
+        vehicle.controls.throttle = 0;
+        vehicle.controls.brake = 0;
+      }
+    }
     vehicle.controls.steer = 0;
     vehicle.controls.boost = false;
     vehicle.controls.reset = false;
@@ -1561,7 +1872,38 @@ export class RaceScene {
   }
 
   /**
-   * Un seul appel `renderer.render()` par frame en plein écran (Solo, Spectateur, 2J en Ligne).
+   * Indique si le rétroviseur (caméra arrière 22vw x 10vh) doit être rendu :
+   * uniquement lorsqu'un seul joueur occupe l'écran (Solo ou Multijoueur en ligne).
+   */
+  isRearviewActive() {
+    if (this.isSpectator) return false;
+    if (this.isOnline) return Boolean(this.localPlayer);
+    return this.playerCount === 1 && Boolean(this.players[0]);
+  }
+
+  _updateRearviewCamera() {
+    const target = this.isOnline ? this.localPlayer : this.players[0];
+    if (!target) return;
+    const pos = target.renderPosition || target.root.position;
+    const quat = target.renderQuaternion || target.root.quaternion;
+    this._rearCamFwd.set(0, 0, -1).applyQuaternion(quat).normalize();
+
+    this._rearCamPos.set(
+      pos.x - this._rearCamFwd.x * 1.4,
+      pos.y + 1.38,
+      pos.z - this._rearCamFwd.z * 1.4
+    );
+    this._rearCamLook.set(
+      pos.x - this._rearCamFwd.x * 28.0,
+      pos.y + 1.05 - this._rearCamFwd.y * 28.0,
+      pos.z - this._rearCamFwd.z * 28.0
+    );
+    this.rearCamera.position.copy(this._rearCamPos);
+    this.rearCamera.lookAt(this._rearCamLook);
+  }
+
+  /**
+   * Un seul appel `renderer.render()` par frame en plein écran (plus un pass scindé pour le rétroviseur si actif).
    */
   render() {
     const w = window.innerWidth;
@@ -1572,6 +1914,48 @@ export class RaceScene {
       this.renderer.setViewport(0, 0, w, h);
       this.weatherSystem.prepareForViewport?.(0);
       this.renderer.render(this.scene, this.cam1.camera);
+
+      if (this.isRearviewActive()) {
+        const mirrorW = Math.max(1, Math.round(w * 0.2675));
+        const mirrorH = Math.max(1, Math.round(h * 0.1284));
+        const mirrorX = Math.round((w - mirrorW) * 0.5);
+        const mirrorY = Math.max(0, Math.round(h - 5 - mirrorH));
+        const mirrorAspect = mirrorW / mirrorH;
+        if (Math.abs(this.rearCamera.aspect - mirrorAspect) > 1e-4) {
+          this.rearCamera.aspect = mirrorAspect;
+          this.rearCamera.updateProjectionMatrix();
+        }
+        const pr = this.renderer.getPixelRatio ? this.renderer.getPixelRatio() : 1;
+        const rtScale = Math.min(3, Math.max(1.75, pr * 1.6));
+        const rtW = Math.max(1, Math.round(mirrorW * rtScale));
+        const rtH = Math.max(1, Math.round(mirrorH * rtScale));
+        if (!this._rearTarget || this._rearTarget.width !== rtW || this._rearTarget.height !== rtH) {
+          if (this._rearTarget) this._rearTarget.dispose();
+          this._rearTarget = new THREE.WebGLRenderTarget(rtW, rtH, {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            depthBuffer: true,
+          });
+          this._rearMirrorMat.map = this._rearTarget.texture;
+          this._rearMirrorMat.needsUpdate = true;
+        }
+        this.renderer.setRenderTarget(this._rearTarget);
+        this.renderer.clear();
+        this.renderer.render(this.scene, this.rearCamera);
+        this.renderer.setRenderTarget(null);
+
+        this.renderer.setScissorTest(true);
+        this.renderer.setViewport(mirrorX, mirrorY, mirrorW, mirrorH);
+        this.renderer.setScissor(mirrorX, mirrorY, mirrorW, mirrorH);
+        this.renderer.clearDepth();
+        // Désactive autoClear pour ne pas effacer le fond en noir autour de la forme arrondie du miroir
+        const prevAutoClear = this.renderer.autoClear;
+        this.renderer.autoClear = false;
+        this.renderer.render(this._rearMirrorScene, this._rearMirrorCam);
+        this.renderer.autoClear = prevAutoClear;
+        this.renderer.setScissorTest(false);
+        this.renderer.setViewport(0, 0, w, h);
+      }
       return;
     }
 

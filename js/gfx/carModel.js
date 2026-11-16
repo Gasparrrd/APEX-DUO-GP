@@ -787,7 +787,35 @@ export class CarModel {
         f.scale.set(1 + 0.2 * Math.random(), 1 + 0.2 * Math.random(), k);
       }
     }
-    if (on) this.flameMat.color.setHSL(0.55 + Math.random() * 0.05, 1, 0.6 + Math.random() * 0.1);
+    if (on) {
+      this.flameMat.color.setHSL(0.55 + Math.random() * 0.05, 1, 0.6 + Math.random() * 0.1);
+      if (this.isGhost) this.flameMat.opacity = 0.35;
+    }
+  }
+
+  /**
+   * Passe le modèle complet en mode Voiture Fantôme translucide (sans modifier les matériaux partagés).
+   */
+  setGhostMode(opacity = 0.36) {
+    this.isGhost = true;
+    this._ghostClonedMats = [];
+    this.root.traverse((o) => {
+      if (!o.isMesh || !o.material) return;
+      const cloned = o.material.clone();
+      cloned.transparent = true;
+      cloned.depthWrite = false;
+      cloned.opacity = o === this.cabinMesh ? opacity * 0.55 : opacity;
+      if (cloned.emissive && o !== this.headlightMesh && o !== this.taillightMesh) {
+        cloned.emissive.setHex(0x00e5ff);
+        cloned.emissiveIntensity = Math.max(cloned.emissiveIntensity || 0, 0.26);
+      }
+      cloned.needsUpdate = true;
+      o.material = cloned;
+      o.castShadow = false;
+      o.receiveShadow = false;
+      o.renderOrder = 3;
+      this._ghostClonedMats.push(cloned);
+    });
   }
 
   setWheel(i, y, steer, spin) {
@@ -799,6 +827,11 @@ export class CarModel {
 
   dispose() {
     this.paint.dispose(); this.rimMat.dispose(); this.tailMat.dispose(); this.flameMat.dispose();
+    if (Array.isArray(this._ghostClonedMats)) {
+      for (const m of this._ghostClonedMats) {
+        try { m.dispose(); } catch (_) {}
+      }
+    }
     this.root.traverse((o) => { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); });
     this.root.removeFromParent();
   }

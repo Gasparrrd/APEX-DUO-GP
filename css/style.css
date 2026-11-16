@@ -76,7 +76,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .brand-block {
@@ -629,22 +630,64 @@ kbd {
   z-index: 15;
 }
 
-.hud-pause-btn {
+.rearview-mirror-frame {
   position: absolute;
-  top: 14px;
+  top: 5px;
   left: 50%;
   transform: translateX(-50%);
+  width: 26.75vw;
+  height: 12.84vh;
+  box-sizing: border-box;
+  z-index: 24;
+  pointer-events: none;
+  background: transparent;
+  filter: drop-shadow(0 5px 14px rgba(0, 0, 0, 0.55));
+}
+
+.rearview-mirror-frame.hidden {
+  display: none !important;
+}
+
+.rearview-mirror-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.hud-driver-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.hud-pause-btn {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
   z-index: 25;
   pointer-events: auto;
-  padding: 9px 22px;
+  padding: 5px 12px;
   border-radius: 999px;
   border: 1.5px solid var(--border-glass);
   background: var(--bg-glass-strong);
   color: #fff;
-  font-size: 17.5px;
+  font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.08em;
   cursor: pointer;
+}
+
+.hud-line-break {
+  display: none;
+}
+
+#race-overlay.solo-mode .hud-line-break {
+  display: block;
+  flex-basis: 100%;
+  height: 0;
 }
 
 .hud-center-cluster {
@@ -659,6 +702,16 @@ kbd {
   align-items: flex-start;
   gap: 10px;
   pointer-events: none;
+}
+
+/* Mode 2 joueurs écran scindé : mini-carte centrée au milieu de l'écran sur la ligne de séparation */
+#race-overlay:not(.solo-mode) .hud-center-cluster {
+  top: 14px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: center;
 }
 
 .minimap-box {
@@ -734,23 +787,163 @@ kbd {
 
 .hud-top-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.hud-right .hud-top-bar {
+/* En mode Solo / En ligne : répartit Pseudo, POS et TOUR avec exactement le même écart entre eux et jusqu'au bord gauche du rétroviseur */
+#race-overlay.solo-mode .hud-left .hud-top-bar {
+  width: 100%;
+  max-width: calc(36.625vw - 20px);
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+}
+
+#race-overlay.solo-mode .hud-left .hud-top-bar::after {
+  content: '';
+  width: 0;
+  flex-shrink: 0;
+}
+
+/* En mode Solo / En ligne : répartit CHRONO, PAUSE et CARTE avec exactement le même écart depuis le bord droit du rétroviseur jusqu'au bord droit */
+#race-overlay.solo-mode .hud-center-cluster {
+  left: 63.375vw;
+  right: 20px;
+  transform: none;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0;
+}
+
+#race-overlay.solo-mode .hud-center-cluster::before {
+  content: '';
+  width: 0;
+  flex-shrink: 0;
+}
+
+#race-overlay.solo-mode .hud-pause-btn {
+  height: 42px;
+  padding: 0 14px;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+#race-overlay.solo-mode #minimap-canvas {
+  width: 146px;
+  height: 124px;
+}
+
+#race-overlay.solo-mode .hud-wind-stack {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+}
+
+#race-overlay.solo-mode .hud-center-cluster .hud-timer-pill {
+  height: 42px;
+  padding: 0 10px;
+  gap: 5px;
+}
+
+#race-overlay.solo-mode .hud-center-cluster .hud-timer-pill strong {
+  font-size: 17px;
+  line-height: 1;
+}
+
+#race-overlay.solo-mode .hud-center-cluster .hud-timer-pill .stat-label {
+  font-size: 12.5px;
+}
+
+#race-overlay.solo-mode .hud-driver-tag {
+  height: 42px;
+  padding: 0 13px;
+  font-size: 15px;
+}
+
+#race-overlay.solo-mode .hud-stat-pill {
+  height: 42px;
+  padding: 0 12px;
+  gap: 7px;
+}
+
+#race-overlay.solo-mode .hud-stat-pill strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
+#race-overlay.solo-mode .rank-big {
+  font-size: 22px;
+  line-height: 1;
+}
+
+#race-overlay.solo-mode .stat-label {
+  font-size: 13px;
+}
+
+#race-overlay.solo-mode .hud-left > .wrong-way-banner {
+  margin-top: 10vh;
+}
+
+/* En mode 2 joueurs écran scindé : encadre la mini-carte centrée sans aucun chevauchement */
+#race-overlay:not(.solo-mode) .hud-left .hud-top-bar {
+  max-width: calc(100% - 102px);
+  gap: 6px;
+}
+
+#race-overlay:not(.solo-mode) .hud-right .hud-top-bar {
   justify-content: flex-start;
-  margin-left: 78px;
-  max-width: calc(100% - 295px);
+  margin-left: 102px;
+  max-width: calc(100% - 108px);
+  gap: 6px;
+}
+
+#race-overlay:not(.solo-mode) .hud-driver-tag {
+  height: 38px;
+  padding: 0 11px;
+  font-size: 15px;
+}
+
+#race-overlay:not(.solo-mode) .hud-stat-pill {
+  height: 38px;
+  padding: 0 10px;
+  gap: 5px;
+}
+
+#race-overlay:not(.solo-mode) .hud-stat-pill strong {
+  font-size: 17px;
+}
+
+#race-overlay:not(.solo-mode) .hud-stat-pill small {
+  font-size: 13px;
+}
+
+#race-overlay:not(.solo-mode) .stat-label {
+  font-size: 12.5px;
+}
+
+#race-overlay:not(.solo-mode) .rank-big {
+  font-size: 21px;
 }
 
 .hud-driver-tag {
-  padding: 9px 18px;
+  height: 44px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 18px;
+  border: 1.5px solid transparent;
   border-radius: 12px;
   font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.08em;
+  line-height: 1;
 }
 
 .p1-tag {
@@ -764,21 +957,26 @@ kbd {
 }
 
 .hud-stat-pill {
+  height: 44px;
+  box-sizing: border-box;
   background: var(--bg-glass);
   border: 1.5px solid var(--border-glass);
-  padding: 8px 18px;
+  padding: 0 18px;
   border-radius: 12px;
-  display: flex;
-  align-items: baseline;
+  display: inline-flex;
+  align-items: center;
   gap: 9px;
+  line-height: 1;
 }
 
 .hud-stat-pill strong {
   font-size: 21px;
+  line-height: 1;
 }
 
 .hud-stat-pill small {
   font-size: 15px;
+  line-height: 1;
 }
 
 .hud-stat-pill.mono strong {
@@ -790,12 +988,14 @@ kbd {
   font-weight: 800;
   color: var(--text-muted);
   letter-spacing: 0.08em;
+  line-height: 1;
 }
 
 .rank-big {
   font-size: 27px;
   font-weight: 900;
   color: var(--accent);
+  line-height: 1;
 }
 
 .wrong-way-banner {
@@ -1031,10 +1231,10 @@ kbd {
 }
 
 .results-card {
-  width: min(94vw, 760px);
-  max-width: 760px;
-  height: 80vh;
-  max-height: 80vh;
+  width: min(96vw, 1140px);
+  max-width: 1140px;
+  height: min(88vh, 840px);
+  max-height: 88vh;
   overflow: hidden;
 }
 
@@ -2294,4 +2494,447 @@ kbd {
   opacity: 0.52;
   pointer-events: none;
   filter: grayscale(0.25);
+}
+
+/* ==========================================================================
+   PSEUDO OBLIGATOIRE, BARRE PILOTE SALON, RECORDS MONDIAUX & FANTÔME
+   ========================================================================== */
+
+.pseudo-welcome-backdrop {
+  z-index: 260 !important;
+  background: rgba(4, 8, 16, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.pseudo-welcome-card {
+  max-width: 480px;
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.72), 0 0 36px rgba(0, 229, 255, 0.16);
+}
+
+.pseudo-welcome-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.pseudo-welcome-input {
+  text-align: center;
+  font-size: 18px !important;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.pseudo-welcome-error {
+  color: #ff6e6e;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: -4px 0 0 0;
+}
+
+.pseudo-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Barre Pilote dans l'en-tête du garage */
+.garage-pilot-bar {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(11, 18, 30, 0.82);
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.pilot-bar-icon {
+  font-size: 14px;
+}
+
+.pilot-bar-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.pilot-bar-name {
+  font-size: 13px;
+  font-weight: 900;
+  color: #00e5ff;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pilot-bar-edit-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8eef7;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.pilot-bar-edit-btn:hover {
+  background: rgba(0, 229, 255, 0.18);
+  border-color: rgba(0, 229, 255, 0.55);
+  color: #ffffff;
+}
+
+/* Onglet Records dans le salon */
+.records-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.records-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.records-filter-wrap label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.records-filter-wrap select {
+  flex: 1;
+  min-width: 0;
+  background: rgba(9, 15, 26, 0.9);
+  color: #f4f7fb;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.records-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.records-sync-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(0, 230, 118, 0.14);
+  border: 1px solid rgba(0, 230, 118, 0.38);
+  color: #69f0ae;
+}
+
+.records-sync-badge.is-local {
+  background: rgba(255, 193, 7, 0.14);
+  border-color: rgba(255, 193, 7, 0.4);
+  color: #ffd54f;
+}
+
+.records-refresh-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-radius: 7px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.records-refresh-btn:hover {
+  border-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.18);
+}
+
+.records-legend {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.lobby-records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.circuit-record-card {
+  background: rgba(7, 12, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.circuit-record-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 5px;
+}
+
+.circuit-record-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: #00e5ff;
+  letter-spacing: 0.03em;
+}
+
+.record-section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.record-section-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #e0f7fa;
+  letter-spacing: 0.04em;
+}
+
+.record-laps-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.record-lap-subcard {
+  background: rgba(13, 21, 35, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  padding: 6px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.record-lap-subtitle {
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffb74d;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.record-podium-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+}
+
+.record-row.is-empty {
+  color: rgba(180, 195, 215, 0.55);
+  font-style: italic;
+  justify-content: center;
+  font-size: 10.5px;
+}
+
+.record-row.is-rank-1 {
+  background: rgba(255, 215, 64, 0.11);
+  border-color: rgba(255, 215, 64, 0.34);
+}
+
+.record-row.is-rank-2 {
+  background: rgba(207, 216, 220, 0.08);
+  border-color: rgba(207, 216, 220, 0.24);
+}
+
+.record-row.is-rank-3 {
+  background: rgba(255, 138, 101, 0.08);
+  border-color: rgba(255, 138, 101, 0.24);
+}
+
+.record-row.is-me {
+  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.7);
+}
+
+.record-row.is-new-entry {
+  background: rgba(0, 229, 255, 0.18) !important;
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.26);
+}
+
+.record-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.record-medal {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-weight: 900;
+}
+
+.record-pseudo {
+  font-weight: 800;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-ghost-pill {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(0, 229, 255, 0.16);
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  color: #80f3ff;
+}
+
+.record-time {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 11px;
+  color: #00e5ff;
+}
+
+/* Écran de fin de course à 2 colonnes (Classement + Records mondiaux du mode) */
+.results-split-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 14px;
+  text-align: left;
+}
+
+.results-standings-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.results-records-col {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(8, 15, 28, 0.72);
+  border: 1px solid rgba(0, 229, 255, 0.24);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.45) rgba(255, 255, 255, 0.06);
+}
+
+.results-records-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.results-records-badge {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #ffd54f;
+}
+
+.results-records-mode {
+  font-size: 13px;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.results-record-banner {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 900;
+  text-align: center;
+  letter-spacing: 0.03em;
+  background: linear-gradient(135deg, rgba(255, 215, 64, 0.22), rgba(0, 229, 255, 0.2));
+  border: 1px solid rgba(255, 215, 64, 0.55);
+  color: #fff59d;
+}
+
+.results-record-banner.is-top3 {
+  background: rgba(0, 229, 255, 0.18);
+  border-color: rgba(0, 229, 255, 0.55);
+  color: #b2ebf2;
+}
+
+.results-wr-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.results-wr-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #cfd8dc;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 860px) {
+  .results-split-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .results-standings-col,
+  .results-records-col {
+    overflow: visible;
+  }
+}
+
+/* Étiquette flottante 3D de la voiture fantôme (#1) en course */
+.race-car-nametag.is-ghost {
+  background: rgba(0, 44, 58, 0.72);
+  border: 1px solid rgba(0, 229, 255, 0.8);
+  color: #9ff6ff;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.42);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }

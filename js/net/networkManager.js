@@ -98,6 +98,7 @@ export class NetworkManager {
     this.onGuestInput = callbacks.onGuestInput || (() => {});
     this.onGuestState = callbacks.onGuestState || (() => {});
     this.onStateChange = callbacks.onStateChange || (() => {});
+    this.onRecordsSync = callbacks.onRecordsSync || (() => {});
 
     this.active = false;
     this.role = 'offline'; // 'offline' | 'host' | 'guest'
@@ -1177,14 +1178,18 @@ export class NetworkManager {
 
         const senderName = (msg.playerName || msg.carConfig?.name || this.slots[targetIdx]?.name || `PILOTE ${targetIdx + 1}`).trim().slice(0, 18);
         if (targetIdx === 0) this.hostName = senderName;
+        this.slots[targetIdx].occupied = true;
+        this.slots[targetIdx].name = senderName;
 
         if (msg.carConfig) {
           const updatedCfg = { ...msg.carConfig, name: senderName };
-          this.slots[targetIdx].occupied = true;
-          this.slots[targetIdx].name = senderName;
           this.slots[targetIdx].carConfig = updatedCfg;
           if (targetIdx === 0) this._lastHostCarConfig = updatedCfg;
           if (targetIdx === 1) this._lastGuestCarConfig = updatedCfg;
+          this.onRemoteCarUpdate(targetIdx, updatedCfg, senderName);
+        } else if (this.slots[targetIdx].carConfig) {
+          const updatedCfg = { ...this.slots[targetIdx].carConfig, name: senderName };
+          this.slots[targetIdx].carConfig = updatedCfg;
           this.onRemoteCarUpdate(targetIdx, updatedCfg, senderName);
         }
 
@@ -1319,6 +1324,17 @@ export class NetworkManager {
         break;
       }
 
+      case 'RECORDS_SYNC': {
+        if (msg.senderClientId && msg.senderClientId === this._localClientId) break;
+        if (msg.payload) {
+          this.onRecordsSync(msg.payload);
+        }
+        if (this.role === 'host') {
+          this._sendControlMessage(msg);
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -1411,6 +1427,21 @@ export class NetworkManager {
     }
   }
 
+  /** Met à jour le pseudonyme du joueur local (alias sémantique pour setLocalName). */
+  updateLocalPseudo(name, carConfig) {
+    this.setLocalName(name, carConfig);
+  }
+
+  /** Diffuse les classements de records mondiaux aux pairs connectés (utile en P2P statique). */
+  sendRecordsSync(payload) {
+    if (!this.active || !payload) return;
+    this._sendControlMessage({
+      type: 'RECORDS_SYNC',
+      senderClientId: this._localClientId,
+      payload,
+    });
+  }
+
   /** Met à jour le pseudonyme de l'Hôte et le diffuse à tous les Invités. */
   setHostName(name, hostCarConfig) {
     this.hostName = (name || 'HÔTE').trim().slice(0, 18) || 'HÔTE';
@@ -1430,14 +1461,11 @@ export class NetworkManager {
   /** Met à jour le pseudonyme de l'Invité sur son slot attribué et le diffuse à l'Hôte. */
   setGuestName(name, guestCarConfig) {
     this.guestName = (name || `PILOTE ${this.mySlotIndex + 1}`).trim().slice(0, 18) || `PILOTE ${this.mySlotIndex + 1}`;
-    if (guestCarConfig) {
-      this._lastGuestCarConfig = { ...guestCarConfig, name: this.guestName };
-    }
+    const baseCfg = guestCarConfig || this._lastGuestCarConfig || this.slots[this.mySlotIndex]?.carConfig || DEFAULT_SLOT_CARS[this.mySlotIndex] || DEFAULT_SLOT_CARS[1];
+    this._lastGuestCarConfig = { ...baseCfg, name: this.guestName };
     if (this.slots[this.mySlotIndex]) {
       this.slots[this.mySlotIndex].name = this.guestName;
-      if (this._lastGuestCarConfig) {
-        this.slots[this.mySlotIndex].carConfig = { ...this._lastGuestCarConfig };
-      }
+      this.slots[this.mySlotIndex].carConfig = { ...this._lastGuestCarConfig };
     }
     if (this.role === 'guest') {
       this._sendControlMessage({

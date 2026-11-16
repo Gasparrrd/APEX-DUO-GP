@@ -824,7 +824,18 @@ export class AIDriver {
     let targetSpeed = Math.min(maxAllowedSpeed, minProfileSpeed * this.cornerSpeedFactor * gripCornerMult);
 
     if (v.finished) {
-      targetSpeed *= 0.88;
+      const targetDist = v.postFinishTargetDistance || 110;
+      const covered = v.postFinishDistance || 0;
+      const remDist = Math.max(0, targetDist - covered);
+      if (v.parkingLocked || remDist <= 1.5) {
+        v.parkingLocked = true;
+        v.controls.throttle = 0;
+        v.controls.brake = 1.0;
+        v.controls.steer = 0;
+        v.controls.boost = false;
+        return;
+      }
+      targetSpeed = Math.min(targetSpeed, Math.sqrt(2 * 10.0 * remDist));
     }
 
     if (Math.abs(steerCmd) > 0.75 && this.difficultyKey === 'easy') {

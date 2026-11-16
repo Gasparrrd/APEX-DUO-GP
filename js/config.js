@@ -19,7 +19,7 @@ export const CONFIG = {
     cameraNear: 0.1,                 // Distance d'affichage minimale de la caméra
     cameraFar: 3000,                 // Distance d'affichage maximale de la caméra
     fogNear: 380,                    // Distance où le brouillard commence
-    fogFar: 2650,                    // Distance où le brouillard est total
+    fogFar: 2700,                    // Distance où le brouillard est total
     separatorPx: 4,                  // Épaisseur de la ligne de séparation écran scindé (px)
   },
 
@@ -34,13 +34,13 @@ export const CONFIG = {
   },
 
   race: {
-    playerCount: 2,                  // Mode par défaut (1 solo, 2 écran scindé)
+    playerCount: 1,                  // Mode par défaut (1 solo, 2 écran scindé)
     circuit: 'flat',                 // Circuit par défaut
     weather: 'sunny',                // Météo par défaut
     globalGrip: 1.0,                 // Adhérence générale (1.0 = 100%)
     engineSound: 'thermal',          // Son moteur par défaut
     laps: 3,                         // Nombre de tours
-    bots: 3,                         // Nombre de bots IA
+    bots: 5,                         // Nombre de bots IA
     maxTotalCars: MAX_TOTAL_CARS,    // Nombre max de voitures sur la piste
     difficulty: 'normal',            // Difficulté des bots par défaut
     finishTimeout: 45,               // Délai (s) laissé aux retardataires après le vainqueur
@@ -65,10 +65,10 @@ export const CONFIG = {
     rollInfluence: 0.08,             // Roulis de la carrosserie en virage
     frictionFront: 3.25,             // Adhérence des pneus avant
     frictionRear: 3.45,              // Adhérence des pneus arrière
-    lateralGripDamping: 8.0,         // Résistance au glissement latéral (plus haut = moins de glisse)
-    slideRate: 0.55,                 // Taux de glissade global de base (modulé en temps réel par la météo, la vitesse et le braquage)
-    manualDriftIntensity: 0.22,      // Force du dérapage manuel frein + braquage (0 = aucun, plus haut = plus violent)
-    manualDriftMinSpeed: 11,         // Vitesse min (m/s) pour déclencher le dérapage manuel au frein (~40 km/h)
+    lateralGripDamping: 7.0,         // Résistance au glissement latéral (plus haut = moins de glisse)
+    slideRate: 0.85,                 // Taux de glissade global de base (modulé en temps réel par la météo, la vitesse et le braquage)
+    manualDriftIntensity: 0.15,      // Force du dérapage manuel frein + braquage (0 = aucun, plus haut = plus violent)
+    manualDriftMinSpeed: 30,         // Vitesse min (m/s) pour déclencher le dérapage manuel au frein (108 km/h)
     grassFrictionFactor: 0.65,       // Adhérence restante sur l'herbe (0.65 = 65%)
     enginePower: 250000,             // Puissance moteur en W
     maxEngineForce: 7400,            // Force motrice max à basse vitesse en N
@@ -78,8 +78,8 @@ export const CONFIG = {
     brakeImpulse: 45,                // Puissance de freinage
     engineBrake: 2.5,                // Frein moteur quand on lâche l'accélérateur
     maxSteer: 0.50,                  // Braquage max à basse vitesse (rad)
-    minSteer: 0.22,                  // Braquage à très haute vitesse (rad)
-    steerSpeedRef: 75,               // Vitesse (m/s) où le braquage atteint son minimum
+    minSteer: 0.25,                  // Braquage réduit à haute vitesse (rad)
+    steerSpeedRef: 68,               // Vitesse (m/s) où le braquage atteint son minimum
     steerRate: 4.0,                  // Vitesse de braquage des roues
     steerReturnRate: 5.8,            // Vitesse de retour des roues au centre
     yawAssist: 0.26,                 // Aide au pivotement de la voiture en virage
@@ -87,7 +87,7 @@ export const CONFIG = {
     rollingResistance: 24,           // Frottement des pneus
     downforce: 3.4,                  // Appui aérodynamique (plaque la voiture au sol)
     grassDrag: 10,                  // Ralentissement supplémentaire dans l'herbe
-    topSpeed: 80,                    // Vitesse max de base en m/s
+    topSpeed: 62,                    // Vitesse max de base en m/s (-10%)
     angularDamping: 0.52,            // Amortissement des rotations (anti tête-à-queue)
   },
 
@@ -100,7 +100,7 @@ export const CONFIG = {
     speedMultiplier: 1.75,           // Multiplicateur de vitesse max pendant le boost
     forceMultiplier: 1.4,           // Multiplicateur de force motrice pendant le boost
     force: 5700,                     // Poussée directe du boost en N
-    topSpeedBonus: 12.0,             // Bonus de vitesse de pointe pendant le boost (m/s)
+    topSpeedBonus: 10.8,             // Bonus de vitesse de pointe pendant le boost (m/s)
     tokenCount: 8,                   // Nombre de jetons de boost (7 bleus + 1 doré)
     normalBonus: 25,                 // Valeur de repli d'un jeton normal (%)
     rankBonusStep: 5,                // Multiplicateur jeton bleu selon le classement (5 × place)
@@ -119,7 +119,7 @@ export const CONFIG = {
   ai: {
     lateralAccel: 19.5,              // Accélération latérale max tolérée par l'IA
     brakeDecel: 15.0,                // Décélération de freinage de l'IA
-    maxSpeed: 108,                   // Vitesse max de référence de l'IA
+    maxSpeed: 90.0,                  // Vitesse max de référence de l'IA (-7% supplémentaires)
     lineMargin: 2.5,                 // Marge de l'IA par rapport aux bords de piste (m)
     unstuckTime: 5.0,                // Délai (s) avant replacement d'un bot bloqué
     relaunchSpeed: 11.0,             // Vitesse (m/s) donnée à un bot replacé
@@ -128,8 +128,8 @@ export const CONFIG = {
   difficulty: {
     easy: {
       label: 'Facile',               // Nom affiché
-      skill: 0.86,                   // Niveau de compétence global
-      maxSpeedFactor: 0.86,          // Part de la vitesse max utilisée
+      skill: 0.90,                   // Niveau de compétence global
+      maxSpeedFactor: 0.80,          // Part de la vitesse max utilisée
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 1.25,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.82,       // Vitesse conservée en virage
@@ -145,8 +145,8 @@ export const CONFIG = {
     },
     normal: {
       label: 'Moyen',                // Nom affiché
-      skill: 1.00,                   // Niveau de compétence global
-      maxSpeedFactor: 0.98,          // Part de la vitesse max utilisée
+      skill: 1.05,                   // Niveau de compétence global
+      maxSpeedFactor: 0.91,          // Part de la vitesse max utilisée
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 0.95,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.94,       // Vitesse conservée en virage
@@ -162,8 +162,8 @@ export const CONFIG = {
     },
     hard: {
       label: 'Difficile',            // Nom affiché
-      skill: 1.08,                   // Niveau de compétence global
-      maxSpeedFactor: 1.16,          // Part de la vitesse max utilisée
+      skill: 1.10,                   // Niveau de compétence global
+      maxSpeedFactor: 1.06,          // Part de la vitesse max utilisée
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 0.84,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 1.01,       // Vitesse conservée en virage
@@ -189,7 +189,7 @@ export const VEHICLE_MODIFIERS = {
   supercar: {
     label: 'Supercar',               // Nom affiché
     topSpeed: 1.15,                  // Multiplicateur de vitesse de pointe (+15%)
-    acceleration: 1.00,              // Multiplicateur d'accélération (0%)
+    acceleration: 1.05,              // Multiplicateur d'accélération (0%)
     grip: 1.10,                      // Multiplicateur d'adhérence / tenue de route (+10%)
     braking: 1.05,                   // Multiplicateur de freinage (+5%)
     get description() {
@@ -210,8 +210,8 @@ export const VEHICLE_MODIFIERS = {
     label: 'Monoplace',              // Nom affiché
     topSpeed: 0.85,                  // Multiplicateur de vitesse de pointe (-15%)
     acceleration: 1.10,              // Multiplicateur d'accélération (+10%)
-    grip: 1.25,                      // Multiplicateur d'adhérence / tenue de route (+25%)
-    braking: 1.22,                   // Multiplicateur de freinage (+22%)
+    grip: 1.2,                      // Multiplicateur d'adhérence / tenue de route (+20%)
+    braking: 1.20,                   // Multiplicateur de freinage (+20%)
     get description() {
       return formatVehicleDescription(this);
     },
@@ -223,7 +223,7 @@ export const VEHICLE_MODIFIERS = {
  * toute modification de CONFIG.car ou de VEHICLE_MODIFIERS avec un poids équivalent.
  */
 export const CAR_REFERENCE_BASELINE = {
-  topSpeed: 80,
+  topSpeed: 62,
   enginePower: 250000,
   maxEngineForce: 7400,
   frictionFront: 3.25,
@@ -254,7 +254,7 @@ export const WEATHER_MODIFIERS = {
     topSpeed: 1.00,                  // Multiplicateur de vitesse max (1.00 = 100%)
     acceleration: 1.00,              // Multiplicateur d'accélération (1.00 = 100%)
     grip: 1.00,                      // Multiplicateur d'adhérence / facilité à tourner
-    slideRate: 0.55,                 // TAUX DE GLISSADE sur sol sec (glisse continue proportionnelle à la vitesse et au braquage)
+    slideRate: 0.84,                 // TAUX DE GLISSADE sur sol sec (glisse continue proportionnelle à la vitesse et au braquage)
     windForce: [0, 0, 0],            // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.00,            // Multiplicateur de résistance de l'air
     skyColor: 0x6ea8df,              // Couleur du ciel
@@ -270,7 +270,7 @@ export const WEATHER_MODIFIERS = {
     topSpeed: 0.97,                  // Multiplicateur de vitesse max (-3%)
     acceleration: 0.95,              // Multiplicateur d'accélération (-5%)
     grip: 1.00,                      // Multiplicateur d'adhérence / facilité à tourner
-    slideRate: 1.05,                 // TAUX DE GLISSADE sous la pluie (+90% de glisse par rapport au sec)
+    slideRate: 1.35,                 // TAUX DE GLISSADE sous la pluie (+61% de glisse par rapport au sec)
     windForce: [220, 0, -160],       // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.04,            // Multiplicateur de résistance de l'air
     skyColor: 0x22262a,              // Couleur du ciel
@@ -288,7 +288,7 @@ export const WEATHER_MODIFIERS = {
     topSpeed: 0.94,                  // Multiplicateur de vitesse max (-6%)
     acceleration: 0.96,              // Multiplicateur d'accélération (-4%)
     grip: 0.90,                      // Multiplicateur d'adhérence / facilité à tourner (-10%)
-    slideRate: 0.80,                 // TAUX DE GLISSADE sous tempête (+45% de glisse par rapport au sec)
+    slideRate: 1.10,                 // TAUX DE GLISSADE sous tempête (+31% de glisse par rapport au sec)
     windForce: [1200, 0, -900],      // Force du vent [X, Y, Z] en N
     dragMultiplier: 1.09,            // Multiplicateur de résistance de l'air
     skyColor: 0x1c2024,              // Couleur du ciel
@@ -385,7 +385,7 @@ export const AI_BEHAVIOR_PROFILES = {
   prudent: {
     key: 'prudent',                  // Identifiant du profil
     label: 'Prudent',                // Nom affiché
-    maxSpeedFactor: 0.75,            // Part de la vitesse max utilisée
+    maxSpeedFactor: 0.8,            // Part de la vitesse max utilisée
     brakeLookaheadMult: 1.55,        // Distance d'anticipation du freinage (plus bas = freine tard)
     cornerSpeedFactor: 0.84,         // Vitesse conservée en virage
     apexCut: 0.15,                   // Tendance à couper à la corde
