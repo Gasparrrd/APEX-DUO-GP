@@ -1358,6 +1358,7 @@ class RacingApp {
         b.classList.toggle('active', b.dataset.engineSound === settings.engineSound);
       });
     }
+    this._prefetchActiveGhost();
   }
 
   /**
@@ -1863,6 +1864,7 @@ class RacingApp {
         playerCount: humanSlots.length,
         humanSlots,
         tokenLayout,
+        ghostData: cachedGhost,
         botAIProfiles: this.raceScene.lastRaceSettings?.botAIProfiles,
         botNames: this.raceScene.lastRaceSettings?.botNames,
       },
@@ -1908,7 +1910,17 @@ class RacingApp {
 
     const resolvedCircuit = payload.raceSettings?.circuit || this.raceSettings.circuit || 'flat';
     const resolvedLaps = Number(payload.raceSettings?.laps || this.raceSettings.laps) || 3;
-    const cachedGhost = recordsManager.getCachedGhost(resolvedCircuit, resolvedLaps);
+    const hostGhost = payload.ghostData || payload.raceSettings?.ghostData || null;
+    if (hostGhost && Array.isArray(hostGhost.samples) && hostGhost.samples.length >= 9) {
+      if (hostGhost.laps === undefined || Number(hostGhost.laps) === resolvedLaps) {
+        recordsManager.ghostCache.set(`${resolvedCircuit}_${resolvedLaps}`, {
+          ...hostGhost,
+          circuit: hostGhost.circuit || resolvedCircuit,
+          laps: Number(hostGhost.laps || resolvedLaps),
+        });
+      }
+    }
+    const cachedGhost = recordsManager.getCachedGhost(resolvedCircuit, resolvedLaps) || hostGhost;
 
     const guestOnlineSettings = {
       ...this.raceSettings,
@@ -2283,6 +2295,14 @@ class RacingApp {
         const freshPseudo = freshGhost ? freshGhost.pseudo : null;
         if (Boolean(freshGhost) !== Boolean(this.raceScene.ghostCar) || curTime !== freshTime || curPseudo !== freshPseudo) {
           this.raceScene.setGhostData(freshGhost);
+        }
+        if (this.currentGameMode === 'ONLINE' && this.network?.role === 'host' && this.network?.active) {
+          this.network.sendRaceEvent({
+            event: 'GHOST_SYNC',
+            circuitId,
+            laps: Number(laps),
+            ghostData: freshGhost || null,
+          });
         }
       }
     });

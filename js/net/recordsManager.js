@@ -334,11 +334,12 @@ export class RecordsManager {
   }
 
   /**
-   * Récupère la voiture fantôme (#1) pour une combinaison (circuit, laps).
+   * Récupère la voiture fantôme (#1 de la course complète pour ce nombre de tours) pour (circuit, laps).
    */
   async fetchGhost(circuitId, laps) {
     const cid = CIRCUIT_META[circuitId] ? circuitId : 'flat';
     const lapKey = String(laps);
+    if (!['2', '3', '5'].includes(lapKey)) return null;
     const key = `${cid}_${lapKey}`;
     const base = this._getApiBaseUrl();
 
@@ -352,6 +353,11 @@ export class RecordsManager {
         if (data && data.ok) {
           this.onlineAvailable = true;
           if (data.ghost && Array.isArray(data.ghost.samples) && data.ghost.samples.length >= 9) {
+            if (data.ghost.laps !== undefined && Number(data.ghost.laps) !== Number(lapKey)) {
+              return null;
+            }
+            data.ghost.circuit = data.ghost.circuit || cid;
+            data.ghost.laps = Number(data.ghost.laps || lapKey);
             const did = sanitizeDeviceId(data.ghost.deviceId);
             if (did && this.devicePseudos[did]) {
               data.ghost.pseudo = this.devicePseudos[did];
@@ -370,11 +376,16 @@ export class RecordsManager {
       // Fallback sur le cache local/P2P
     }
 
-    return this.ghostCache.get(key) || null;
+    return this.getCachedGhost(cid, lapKey);
   }
 
   getCachedGhost(circuitId, laps) {
-    return this.ghostCache.get(`${circuitId}_${laps}`) || null;
+    const lapKey = String(laps);
+    if (!['2', '3', '5'].includes(lapKey)) return null;
+    const g = this.ghostCache.get(`${circuitId}_${lapKey}`) || null;
+    if (!g) return null;
+    if (g.laps !== undefined && Number(g.laps) !== Number(lapKey)) return null;
+    return g;
   }
 
   /**
@@ -495,6 +506,8 @@ export class RecordsManager {
         const ghostEntry = {
           entryId,
           deviceId: this.deviceId,
+          circuit: cid,
+          laps: Number(lapKey),
           pseudo: cleanPseudo,
           time: validTotalRace,
           carConfig: cleanCar,
@@ -557,6 +570,8 @@ export class RecordsManager {
             this.ghostCache.set(`${cid}_${lapKey}`, {
               entryId: data.entryId || entryId,
               deviceId: this.deviceId,
+              circuit: cid,
+              laps: Number(lapKey),
               pseudo: cleanPseudo,
               time: validTotalRace,
               carConfig: cleanCar,
@@ -594,18 +609,39 @@ export class RecordsManager {
     };
   }
 
-  /** Exporte les classements actuels pour la synchronisation P2P entre joueurs en ligne. */
+  /** Exporte les classements et fantômes #1 actuels pour la synchronisation P2P entre joueurs en ligne. */
   exportForPeer() {
+    const ghosts = {};
+    for (const [k, v] of this.ghostCache.entries()) {
+      if (v && Array.isArray(v.samples) && v.samples.length >= 9) {
+        ghosts[k] = v;
+      }
+    }
     return {
       leaderboards: this.leaderboards,
       devicePseudos: this.devicePseudos,
+      ghosts,
     };
   }
 
-  /** Fusionne les classements reçus d'un pair P2P (utile en hébergement statique sans serveur HTTP). */
+  /** Fusionne les classements et fantômes #1 reçus d'un pair P2P. */
   importFromPeer(payload) {
     if (!payload || !payload.leaderboards) return false;
     let changed = false;
+
+    if (payload.ghosts && typeof payload.ghosts === 'object') {
+      for (const [k, incGhost] of Object.entries(payload.ghosts)) {
+        if (!incGhost || !Array.isArray(incGhost.samples) || incGhost.samples.length < 9) continue;
+        const curGhost = this.ghostCache.get(k);
+        if (!curGhost || (Number(incGhost.time) > 0 && Number(incGhost.time) < Number(curGhost.time || Infinity))) {
+          const did = sanitizeDeviceId(incGhost.deviceId);
+          const cloned = { ...incGhost };
+          if (did && this.devicePseudos[did]) cloned.pseudo = this.devicePseudos[did];
+          this.ghostCache.set(k, cloned);
+          changed = true;
+        }
+      }
+    }
 
     if (payload.devicePseudos && typeof payload.devicePseudos === 'object') {
       for (const [k, v] of Object.entries(payload.devicePseudos)) {

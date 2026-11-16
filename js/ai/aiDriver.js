@@ -70,7 +70,7 @@ export function generateBotAIProfiles(botCount, diffKey = 'normal') {
   // Lecture directe et dynamique de tous les réglages depuis CONFIG.difficulty[diffKey]
   const mean = {
     skillLevel: diffCfg.skill ?? fb.skill,
-    targetSpeedFactor: diffCfg.maxSpeedFactor ?? 0.90,
+    targetSpeedFactor: diffCfg.maxSpeedFactor ?? 1.092,
     speedSpread: diffCfg.speedSpread ?? 0.055,
     brakeLookaheadMult: diffCfg.brakeLookaheadMult ?? 1.10,
     cornerSpeedFactor: diffCfg.cornerSpeedFactor ?? 0.94,
@@ -207,8 +207,8 @@ export class AIDriver {
       this.corridorHalfWidth = profile.corridorHalfWidth;
       this.decisionRate = profile.decisionRate;
     } else if (diffKey === 'easy') {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.88;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.78, 0.96);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.96;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.86, 1.08);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
       this.brakeLookaheadMult = 1.15 * (1 - this.speedDelta * 0.35);
       this.cornerSpeedFactor = 0.93 * (1 + this.speedDelta * 0.40);
@@ -222,8 +222,8 @@ export class AIDriver {
       this.corridorHalfWidth = profile.corridorHalfWidth ?? 2.0;
       this.decisionRate = profile.decisionRate ?? 1.4;
     } else if (diffKey === 'hard') {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 1.10;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 1.02, 1.20);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 1.272;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 1.15, 1.40);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
       this.brakeLookaheadMult = 0.48 * (1 - this.speedDelta * 0.5);
       this.cornerSpeedFactor = 1.10 * (1 + this.speedDelta * 0.45);
@@ -237,8 +237,8 @@ export class AIDriver {
       this.corridorHalfWidth = profile.corridorHalfWidth ?? (this.behavior.corridorHalfWidth ?? 4.2);
       this.decisionRate = profile.decisionRate ?? 2.6;
     } else {
-      const baseSpeed = this.diffCfg.maxSpeedFactor || 0.98;
-      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.90, 1.06);
+      const baseSpeed = this.diffCfg.maxSpeedFactor || 1.092;
+      this.targetSpeedFactor = clamp(baseSpeed + this.speedDelta, 0.98, 1.20);
       this.maxSpeedFactor = this.targetSpeedFactor * bodyNorm;
       this.brakeLookaheadMult = (this.behavior.brakeLookaheadMult ?? 0.85) * (1 - this.speedDelta * 0.4);
       this.cornerSpeedFactor = (this.behavior.cornerSpeedFactor ?? 1.00) * (1 + this.speedDelta * 0.45);

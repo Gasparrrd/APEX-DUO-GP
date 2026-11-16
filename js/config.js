@@ -119,7 +119,7 @@ export const CONFIG = {
   ai: {
     lateralAccel: 19.5,              // Accélération latérale max tolérée par l'IA
     brakeDecel: 15.0,                // Décélération de freinage de l'IA
-    maxSpeed: 90.0,                  // Vitesse max de référence de l'IA (-7% supplémentaires)
+    maxSpeed: 108.0,                 // Vitesse max de référence de l'IA (+20%)
     lineMargin: 2.5,                 // Marge de l'IA par rapport aux bords de piste (m)
     unstuckTime: 5.0,                // Délai (s) avant replacement d'un bot bloqué
     relaunchSpeed: 11.0,             // Vitesse (m/s) donnée à un bot replacé
@@ -129,7 +129,7 @@ export const CONFIG = {
     easy: {
       label: 'Facile',               // Nom affiché
       skill: 0.90,                   // Niveau de compétence global
-      maxSpeedFactor: 0.80,          // Part de la vitesse max utilisée
+      maxSpeedFactor: 0.96,          // Part de la vitesse max utilisée (+20%)
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 1.25,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.82,       // Vitesse conservée en virage
@@ -146,7 +146,7 @@ export const CONFIG = {
     normal: {
       label: 'Moyen',                // Nom affiché
       skill: 1.05,                   // Niveau de compétence global
-      maxSpeedFactor: 0.91,          // Part de la vitesse max utilisée
+      maxSpeedFactor: 1.092,         // Part de la vitesse max utilisée (+20%)
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 0.95,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 0.94,       // Vitesse conservée en virage
@@ -163,7 +163,7 @@ export const CONFIG = {
     hard: {
       label: 'Difficile',            // Nom affiché
       skill: 1.10,                   // Niveau de compétence global
-      maxSpeedFactor: 1.06,          // Part de la vitesse max utilisée
+      maxSpeedFactor: 1.272,         // Part de la vitesse max utilisée (+20%)
       speedSpread: 0.025,            // Écart aléatoire de vitesse entre bots
       brakeLookaheadMult: 0.84,      // Distance d'anticipation du freinage (plus bas = freine tard)
       cornerSpeedFactor: 1.01,       // Vitesse conservée en virage

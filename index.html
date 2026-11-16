@@ -26,11 +26,6 @@
   <!-- 1. ÉCRAN GARAGE 3D / LOBBY                                           -->
   <!-- ==================================================================== -->
   <section id="garage-overlay" class="overlay-screen">
-    <!-- Bouton « Quitter le groupe » centré tout en haut (visible uniquement en mode 2J en Ligne ou session P2P active) -->
-    <button type="button" id="btn-leave-group" class="leave-group-btn hidden">
-      ❌ Quitter le groupe
-    </button>
-
     <!-- Bannière de notification (ex. « L'hôte s'est déconnecté ») -->
     <div id="lobby-toast-banner" class="lobby-toast-banner hidden"></div>
 
@@ -63,12 +58,18 @@
         <span class="brand-badge">3D RACING</span>
         <h1>APEX DUO <span class="accent">GP</span></h1>
       </div>
-      <div id="garage-pilot-bar" class="garage-pilot-bar">
-        <span class="pilot-bar-icon">👤</span>
-        <span class="pilot-bar-label">PILOTE :</span>
-        <strong id="garage-current-pseudo" class="pilot-bar-name">Pilote</strong>
-        <button type="button" id="btn-change-pseudo" class="pilot-bar-edit-btn" title="Modifier votre pseudo à tout moment">
-          ✏️ Changer de pseudo
+      <div class="garage-pilot-stack">
+        <div id="garage-pilot-bar" class="garage-pilot-bar">
+          <span class="pilot-bar-icon">👤</span>
+          <span class="pilot-bar-label">PILOTE :</span>
+          <strong id="garage-current-pseudo" class="pilot-bar-name">Pilote</strong>
+          <button type="button" id="btn-change-pseudo" class="pilot-bar-edit-btn" title="Modifier votre pseudo à tout moment">
+            ✏️ Changer de pseudo
+          </button>
+        </div>
+        <!-- Bouton « Quitter le groupe » juste en dessous du changement de pseudo -->
+        <button type="button" id="btn-leave-group" class="leave-group-btn hidden">
+          ❌ Quitter le groupe
         </button>
       </div>
       <div class="orbit-hint">

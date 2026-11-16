@@ -25,6 +25,7 @@ import { ParticleSystem } from '../gfx/particles.js?v=42';
 import { WeatherSystem } from '../gfx/weather.js?v=42';
 import { soundManager } from '../core/audio.js?v=42';
 import { HEADER_FLOATS, VEHICLE_FLOATS } from '../net/networkManager.js?v=42';
+import { recordsManager } from '../net/recordsManager.js?v=42';
 import { clamp } from '../core/utils.js?v=42';
 
 const _tmpQuatA = new THREE.Quaternion();
@@ -239,6 +240,18 @@ export class RaceScene {
           if (this.localPlayer && !this.localPlayer.isAI && !this.localPlayer.finished) {
             const tag = msg.playerName || v.displayTag || v.name || 'Un joueur';
             this.hud.showHumiliation(`${tag} vous a humilié`, 0, 4.5);
+          }
+        }
+      }
+    } else if (msg.event === 'GHOST_SYNC') {
+      const cid = msg.circuitId || this.currentCircuitId;
+      const laps = Number(msg.laps || CONFIG.race.laps) || 3;
+      const g = msg.ghostData || null;
+      if (g && Array.isArray(g.samples) && g.samples.length >= 9 && cid) {
+        if (g.laps === undefined || Number(g.laps) === laps) {
+          recordsManager.ghostCache.set(`${cid}_${laps}`, { ...g, circuit: cid, laps });
+          if (this.currentCircuitId === cid && Number(CONFIG.race.laps) === laps) {
+            this.setGhostData(g);
           }
         }
       }
@@ -634,7 +647,7 @@ export class RaceScene {
     const dz = pos.z - camera.position.z;
     const distSq = dx * dx + dy * dy + dz * dz;
 
-    if (distSq > 185 * 185) {
+    if (distSq > 85 * 85) {
       if (el.style.display !== 'none') el.style.display = 'none';
       return;
     }
@@ -681,7 +694,7 @@ export class RaceScene {
 
     if (ghostTagEl) {
       if (this.ghostCar && this.ghostCar.root.visible) {
-        this._projectSingleNameTag(camera, this.ghostCar.renderPosition, 0.92, ghostTagEl, vpWidth, vpHeight, isCompactSplit);
+        this._projectSingleNameTag(camera, this.ghostCar.renderPosition, 0.78, ghostTagEl, vpWidth, vpHeight, isCompactSplit);
       } else if (ghostTagEl.style.display !== 'none') {
         ghostTagEl.style.display = 'none';
       }
@@ -697,7 +710,8 @@ export class RaceScene {
       return;
     }
 
-    const laps = CONFIG.race.laps;
+    const laps = Number(this.lastRaceSettings?.laps ?? CONFIG.race.laps) || 3;
+    CONFIG.race.laps = laps;
 
     const requestedWeather = this.lastRaceSettings?.weather || CONFIG.race.weather || 'sunny';
     this.activeWeather = this.weatherSystem.setWeather(requestedWeather, this.track.roadMaterials);
@@ -1386,14 +1400,11 @@ export class RaceScene {
 
     if (exactIdx >= totalFrames - 1) {
       g.finished = true;
-      if (this.raceTime > (g.time || (totalFrames * interval)) + 1.5) {
-        g.root.visible = false;
-        g.model.setBoost(false);
-      }
+      g.model.setBoost(false);
     }
   }
 
-  /** Enregistre la position/rotation des joueurs humains locaux à 15 Hz pour le fantôme WR. */
+  /** Enregistre la position/rotation des joueurs humains locaux à 15 Hz sur toute la course pour le fantôme WR. */
   _recordPlayersGhostSamples() {
     if (this.state !== 'racing' && this.state !== 'finished') return;
     const targets = (this.isOnline && this.localPlayer) ? [this.localPlayer] : this.players;
@@ -1402,8 +1413,11 @@ export class RaceScene {
       const rec = this.ghostRecorders.get(p.id);
       if (!rec || rec.completed) continue;
 
-      // Capture tant que le joueur n'a pas fini (ou capture sa frame exacte d'arrivée)
-      const shouldPush = (!p.finished && this.raceTime >= rec.nextSampleTime) || p.finished;
+      // Capture sur toute la course puis jusqu'à immobilisation post-arrivée (dans la limite de 3,5 s après la ligne)
+      const postFinishActive = p.finished && !p.parkingLocked && (this.raceTime - (p.finishTime || 0)) <= 3.5;
+      const shouldPush = (!p.finished && this.raceTime >= rec.nextSampleTime)
+        || (postFinishActive && this.raceTime >= rec.nextSampleTime)
+        || (p.finished && !rec.crossedLogged);
       if (shouldPush && rec.samples.length < 45000) {
         const rp = p.renderPosition;
         const rq = p.renderQuaternion;
@@ -1418,12 +1432,11 @@ export class RaceScene {
           Math.round((p.steerAngle || 0) * 100) / 100,
           p.isBoosting ? 1 : 0
         );
-        if (!p.finished) {
-          rec.nextSampleTime = this.raceTime + this.ghostSampleInterval;
-        }
+        rec.nextSampleTime = this.raceTime + this.ghostSampleInterval;
+        if (p.finished) rec.crossedLogged = true;
       }
 
-      if (p.finished) {
+      if (p.finished && (p.parkingLocked || (this.raceTime - (p.finishTime || 0)) > 3.5)) {
         rec.completed = true;
       }
     }
@@ -1784,25 +1797,40 @@ export class RaceScene {
     const remDist = Math.max(0, targetDist - covered);
     const speed = vehicle.forwardSpeed || 0;
 
-    if (vehicle.parkingLocked || remDist <= 1.5) {
+    if (vehicle.parkingLocked || remDist <= 1.5 || (covered >= 75 && speed <= 0.6)) {
       vehicle.parkingLocked = true;
       vehicle.controls.throttle = 0;
       vehicle.controls.brake = 1.0;
-    } else if (covered < 75 && speed < 10) {
-      // Garde un filet de gaz si la voiture allait s'arrêter avant 75m
-      vehicle.controls.throttle = 0.25;
-      vehicle.controls.brake = 0;
+      vehicle.controls.steer = 0;
     } else {
-      const targetSpeed = Math.sqrt(2 * 10.0 * remDist);
-      if (speed > targetSpeed) {
-        vehicle.controls.throttle = 0;
-        vehicle.controls.brake = Math.min(0.90, Math.max(0.12, (speed * speed) / (2 * Math.max(2, remDist) * 28)));
-      } else {
-        vehicle.controls.throttle = 0;
+      if (covered < 75 && speed < 10) {
+        // Garde un filet de gaz si la voiture allait s'arrêter avant 75m
+        vehicle.controls.throttle = 0.25;
         vehicle.controls.brake = 0;
+      } else {
+        const targetSpeed = Math.sqrt(2 * 10.0 * remDist);
+        if (speed > targetSpeed) {
+          vehicle.controls.throttle = 0;
+          vehicle.controls.brake = Math.min(0.90, Math.max(0.12, (speed * speed) / (2 * Math.max(2, remDist) * 28)));
+        } else {
+          vehicle.controls.throttle = 0;
+          vehicle.controls.brake = 0;
+        }
+      }
+      // Suit doucement la piste après la ligne d'arrivée sans percuter les glissières
+      if (this.layout && vehicle.chassisBody) {
+        const smp = this.layout.sample((vehicle.trackS + 18) % this.layout.length, 0);
+        const pos = vehicle.chassisBody.position;
+        const dx = smp.position.x - pos.x;
+        const dz = smp.position.z - pos.z;
+        const dist = Math.hypot(dx, dz) || 1;
+        const right = vehicle.getRightVector();
+        const localX = (dx / dist) * right.x + (dz / dist) * right.z;
+        vehicle.controls.steer = clamp(-localX * 1.6, -0.65, 0.65);
+      } else {
+        vehicle.controls.steer = 0;
       }
     }
-    vehicle.controls.steer = 0;
     vehicle.controls.boost = false;
     vehicle.controls.reset = false;
   }

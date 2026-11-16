@@ -439,6 +439,8 @@ class RacingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         store["ghosts"][f"{circuit}_{laps}"] = {
                             "entryId": entry_id,
                             "deviceId": device_id,
+                            "circuit": circuit,
+                            "laps": int(laps),
                             "pseudo": pseudo,
                             "time": round(float(total_race_time), 4),
                             "carConfig": car_config,

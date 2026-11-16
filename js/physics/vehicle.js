@@ -542,7 +542,7 @@ export class Vehicle {
       this.finishedInReverse = false;
       this.humiliationPending = false;
       this.postFinishDistance = 0;
-      this.postFinishTargetDistance = 12.0;
+      this.postFinishTargetDistance = 75 + Math.random() * 75;
       this.finishCrossingPos.copy(position);
       this.parkingLocked = false;
       this.parkedPos.copy(position);
@@ -722,11 +722,6 @@ export class Vehicle {
       return;
     }
 
-    if (this.finished && !this.isAI) {
-      this._updatePostFinishAutoBrake(dt);
-      return;
-    }
-
     if (this.controls.reset && canDrive) {
       this.controls.reset = false;
       this.resetToTrack(0);
@@ -836,8 +831,8 @@ export class Vehicle {
     const boostTopMult = this.isBoosting ? (B.speedMultiplier || 1.20) : 1.0;
     const slowdownMult = this.slowdownTimer > 0 ? (this.slowdownFactor || 0.75) : 1.0;
     const aiSpeedMult = this.isAI ? (this.aiSpeedMultiplier || 1.0) : 1.0;
-    const aiForceMult = this.isAI ? clamp(aiSpeedMult, 0.80, 1.35) : 1.0;
-    const aiPowerMult = this.isAI ? clamp(aiSpeedMult * aiSpeedMult, 0.70, 1.55) : 1.0;
+    const aiForceMult = this.isAI ? clamp(aiSpeedMult, 0.80, 1.60) : 1.0;
+    const aiPowerMult = this.isAI ? clamp(aiSpeedMult * aiSpeedMult, 0.70, 2.10) : 1.0;
     // Perte de vitesse en montée :
     // - 1.45 (0.95 avec boost) : baisse la vitesse max atteignable en côte (0.70 = plancher -30%)
     // - 1.65 : réduit l'accélération en montée au-dessus de 6 m/s (0.65 = plancher)
@@ -1173,8 +1168,7 @@ export class Vehicle {
           this.humiliationPending = isReverseFinish;
           this.finishTime = exactTime;
           this.postFinishDistance = 0;
-          const slotOffset = this.id === 'p2' ? 2.0 : this.isAI ? 3.2 : 0;
-          this.postFinishTargetDistance = 11.5 + slotOffset;
+          this.postFinishTargetDistance = 75 + Math.random() * 75;
           this.finishCrossingPos.copy(this.currPhysicsPos);
           this.parkingLocked = false;
           this.controls.throttle = 0;
