@@ -188,7 +188,7 @@ export const CONFIG = {
 export const VEHICLE_MODIFIERS = {
   supercar: {
     label: 'Supercar',               // Nom affiché
-    topSpeed: 1.15,                  // Multiplicateur de vitesse de pointe (+15%)
+    topSpeed: 1.10,                  // Multiplicateur de vitesse de pointe (+15%)
     acceleration: 1.05,              // Multiplicateur d'accélération (0%)
     grip: 1.10,                      // Multiplicateur d'adhérence / tenue de route (+10%)
     braking: 1.05,                   // Multiplicateur de freinage (+5%)
@@ -208,7 +208,7 @@ export const VEHICLE_MODIFIERS = {
   },
   formula: {
     label: 'Monoplace',              // Nom affiché
-    topSpeed: 0.85,                  // Multiplicateur de vitesse de pointe (-15%)
+    topSpeed: 0.95,                  // Multiplicateur de vitesse de pointe (-15%)
     acceleration: 1.10,              // Multiplicateur d'accélération (+10%)
     grip: 1.2,                      // Multiplicateur d'adhérence / tenue de route (+20%)
     braking: 1.20,                   // Multiplicateur de freinage (+20%)
